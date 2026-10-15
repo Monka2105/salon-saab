@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* Los valores de marca los inyecta src/app/layout.tsx desde la configuración del tenant. */
+:root {
+  --brand: #434343;
+  --brand-foreground: #ffffff;
+  --brand-accent: #3c3c3c;
+  --brand-radius: 0px;
+}
+
+/* Estilo editorial: lienzo crema, tinta acromática, sin sombras ni radios. */
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-accent: var(--brand-accent);
+  --radius-brand: var(--brand-radius);
+
+  --color-cream: #f6f3f0;
+  --color-ink: #3c3c3c;
+  --color-carbon: #000000;
+  --color-stone: #dedfdb;
+  --color-ash: #939393;
+  --color-graphite: #434343;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+body {
+  @apply bg-cream font-sans text-ink antialiased;
+}
+
+/* Titular display: serif tipo anuncio de perfume. */
+@utility headline {
+  @apply font-serif text-[42px] leading-[1.1] font-medium tracking-[0.014em];
+}
+
+/* Micro-label: el gesto firma — 11px, mayúsculas, espaciado. */
+@utility micro-label {
+  @apply text-[11px] leading-[1.2] font-medium tracking-[0.023em] uppercase;
+}
+
+/* Acción: texto en mayúsculas con hairline inferior. No existen botones rellenos en el sistema. */
+@utility link-cta {
+  @apply inline-block border-b border-ink pb-1 text-[12px] leading-[1.2] font-medium tracking-[0.023em] text-ink uppercase transition-colors hover:border-carbon hover:text-carbon;
+}
+
+.input {
+  @apply w-full rounded-brand border border-ash bg-white px-3 py-2.5 text-[15px] text-ink outline-none placeholder:text-ash focus:border-carbon;
+}
+
+.btn-primary {
+  @apply link-cta cursor-pointer disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+.btn-secondary {
+  @apply link-cta cursor-pointer border-ash text-ash hover:border-ink hover:text-ink;
+}
+
+/* Sin radios ni sombras en ningún componente, incluidos los nativos. */
+*,
+::before,
+::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
