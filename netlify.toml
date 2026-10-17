@@ -1,4 +1,4 @@
-# Build en Netlify: aplica las migraciones de Prisma y el seed (idempotente) contra
-# Netlify Database (NETLIFY_DB_URL) antes de compilar la app.
+# NETLIFY_DB_URL solo existe en runtime (funciones), no en el build: las migraciones y el seed
+# de producción se aplican con `npm run db:netlify` desde tu máquina.
 [build]
-  command = "export DATABASE_URL=\"${NETLIFY_DB_URL:-$DATABASE_URL}\" && npx prisma migrate deploy && npm run db:seed && npm run build"
+  command = "npm run build"
