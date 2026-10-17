@@ -90,7 +90,8 @@ export const tenantConfig: TenantConfig = {
     name: "L'Atelier",
     tagline: "Peluquería & barbería",
     description: "Cortes, color y ritual de barba con cita previa. Reserva en la web o escríbenos por WhatsApp.",
-    phone: "",
+    // Solo dígitos con indicativo; activa el botón de WhatsApp. Se puede cambiar en Admin → Ajustes.
+    phone: "573053715727",
     address: "",
     locale: "es-CO",
     currency: "COP",
