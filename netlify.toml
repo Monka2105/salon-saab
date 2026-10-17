@@ -1,0 +1,4 @@
+# Build en Netlify: aplica las migraciones de Prisma y el seed (idempotente) contra
+# Netlify Database (NETLIFY_DB_URL) antes de compilar la app.
+[build]
+  command = "export DATABASE_URL=\"${NETLIFY_DB_URL:-$DATABASE_URL}\" && npx prisma migrate deploy && npm run db:seed && npm run build"
