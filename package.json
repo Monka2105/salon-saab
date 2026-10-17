@@ -14,8 +14,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "whatsapp": "tsx scripts/whatsapp-web.ts",
-    "db:seed:netlify": "node scripts/netlify-seed.mjs"
+    "whatsapp": "tsx scripts/whatsapp-web.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

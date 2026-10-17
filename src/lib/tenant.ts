@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Tenant } from "@prisma/client";
 import { tenantConfig, type TenantConfig, type Terminology } from "@/config/tenant";
+import { ensureInitialData } from "@/modules/setup/initial-data";
 import { prisma } from "./db";
 
 /** Configuración efectiva: config/tenant.ts + overrides guardados en la tabla Tenant. */
@@ -56,9 +57,18 @@ export function resolveTenant(row: Tenant): ResolvedTenant {
   };
 }
 
+// Una vez por proceso: crea admin/servicios/estilistas iniciales si faltan (ver initial-data.ts).
+let initialData: Promise<void> | undefined;
+
 async function loadDefaultTenantRow(): Promise<Tenant> {
   // upsert: crea la fila la primera vez, así la app funciona sin seed.
-  return prisma.tenant.upsert({ where: { slug: DEFAULT_SLUG }, create: { slug: DEFAULT_SLUG }, update: {} });
+  const row = await prisma.tenant.upsert({ where: { slug: DEFAULT_SLUG }, create: { slug: DEFAULT_SLUG }, update: {} });
+  initialData ??= ensureInitialData(prisma, row.id, { syncAdminPassword: false }).catch((err) => {
+    initialData = undefined;
+    console.error("No se pudieron crear los datos iniciales:", err);
+  });
+  await initialData;
+  return row;
 }
 
 /** Tenant de la petición actual (memoizado por request en Server Components). */
