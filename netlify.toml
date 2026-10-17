@@ -1,5 +1,8 @@
-# El esquema de producción lo gestiona Netlify Database: aplica automáticamente las migraciones
-# SQL de netlify/database/migrations en cada deploy (el usuario de runtime no puede hacer DDL).
+# El esquema de producción lo gestiona Netlify Database: aplica las migraciones SQL de
+# netlify/database/migrations en cada deploy (el usuario de runtime no puede hacer DDL).
 # Al cambiar prisma/schema.prisma, genera una migración nueva con `prisma migrate diff`.
+#
+# La copia a .netlify/internal/db/migrations la hace @netlify/build solo con el feature flag
+# `netlify_build_db_setup`, que no está activo en este sitio; la hacemos nosotros.
 [build]
-  command = "npm run build"
+  command = "mkdir -p .netlify/internal/db && cp -r netlify/database/migrations .netlify/internal/db/ && npm run build"
