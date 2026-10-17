@@ -7,10 +7,11 @@ import { PublicShell } from "@/components/PublicShell";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatPrice, shiftDay, todayIn } from "@/lib/format";
+import { MAX_SERVICES_PER_BOOKING } from "@/modules/appointments/service";
 import { getCurrentTenant } from "@/lib/tenant";
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ staff?: string; day?: string; slot?: string }>;
+type SearchParams = Promise<{ staff?: string; day?: string; slot?: string; extra?: string }>;
 
 /** Días que se ofrecen en la tira de fechas. */
 const DAYS_SHOWN = 21;
@@ -39,6 +40,17 @@ export default async function ServicePage({ params, searchParams }: { params: Pa
     select: { id: true, name: true, specialty: true, photoUrl: true },
   });
 
+  // Servicios que se pueden añadir a la misma reserva (se hacen seguidos, con el mismo estilista).
+  const otherServices = await prisma.service.findMany({
+    where: { tenantId: tenant.id, active: true, id: { not: service.id } },
+    orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+    select: { id: true, title: true, durationMinutes: true, price: true },
+  });
+  const extraIds = [...new Set((query.extra ?? "").split(","))]
+    .filter((x) => otherServices.some((s) => s.id === x))
+    .slice(0, MAX_SERVICES_PER_BOOKING - 1);
+  const serviceIds = [service.id, ...extraIds];
+
   const today = todayIn(business.timezone);
   const days = Array.from({ length: Math.min(DAYS_SHOWN, records.maxDaysAhead + 1) }, (_, i) => shiftDay(today, i));
 
@@ -48,9 +60,9 @@ export default async function ServicePage({ params, searchParams }: { params: Pa
   let day = requestedDay ?? today;
   let initialSlots: string[];
   if (requestedDay) {
-    initialSlots = await loadDaySlots(service.id, staffId, requestedDay);
+    initialSlots = await loadDaySlots(serviceIds, staffId, requestedDay);
   } else {
-    const next = await loadNextSlots(service.id, staffId);
+    const next = await loadNextSlots(serviceIds, staffId);
     day = next.day ?? today;
     initialSlots = next.slots;
   }
@@ -73,11 +85,14 @@ export default async function ServicePage({ params, searchParams }: { params: Pa
         </section>
 
         <ServiceBooking
-          serviceId={service.id}
+          mainService={{ id: service.id, title: service.title, durationMinutes: service.durationMinutes, price: service.price }}
+          otherServices={otherServices}
+          maxServices={MAX_SERVICES_PER_BOOKING}
+          business={business}
           staff={staff}
           locale={business.locale}
           days={days}
-          defaults={{ staffId, day, slot: /^\d{2}:\d{2}$/.test(query.slot ?? "") ? query.slot! : null }}
+          defaults={{ staffId, day, extraIds, slot: /^\d{2}:\d{2}$/.test(query.slot ?? "") ? query.slot! : null }}
           initialSlots={initialSlots}
           signedIn={Boolean(user)}
           path={`/servicios/${service.id}`}

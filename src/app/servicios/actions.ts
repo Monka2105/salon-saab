@@ -6,7 +6,13 @@ import { prisma } from "@/lib/db";
 import { shiftDay, todayIn, zonedLocalToUtc } from "@/lib/format";
 import { getCurrentTenant, type ResolvedTenant } from "@/lib/tenant";
 import { findAvailableSlots } from "@/modules/appointments/scheduling";
-import { AppointmentError, type AppointmentErrorCode, createAppointment } from "@/modules/appointments/service";
+import {
+  AppointmentError,
+  type AppointmentErrorCode,
+  createBooking,
+  findBookingServices,
+  MAX_SERVICES_PER_BOOKING,
+} from "@/modules/appointments/service";
 
 // Reserva desde la página de cada servicio (/servicios/[id]).
 // Consultar horarios es público (solo expone horas libres, igual que el agente de WhatsApp);
@@ -23,17 +29,19 @@ export interface NextSlots {
 const SEARCH_DAYS = 14;
 
 const idSchema = z.string().cuid();
+/** Servicio principal + adicionales, en orden; los horarios se calculan con la duración total. */
+const serviceIdsSchema = z.array(idSchema).min(1).max(MAX_SERVICES_PER_BOOKING);
 const staffSchema = z.union([z.literal("any"), idSchema]);
 const daySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-async function slotsFor(tenant: ResolvedTenant, serviceId: string, staffMemberId: string, day: string): Promise<string[]> {
-  const service = await prisma.service.findFirst({ where: { id: serviceId, tenantId: tenant.id, active: true } });
-  if (!service) return [];
+async function slotsFor(tenant: ResolvedTenant, serviceIds: string[], staffMemberId: string, day: string): Promise<string[]> {
+  const services = await findBookingServices(tenant.id, serviceIds);
+  if (!services) return [];
 
   const slots = await findAvailableSlots(prisma, {
     tenant,
     day,
-    durationMinutes: service.durationMinutes,
+    durationMinutes: services.reduce((sum, s) => sum + s.durationMinutes, 0),
     staffMemberId: staffMemberId === "any" ? null : staffMemberId,
   });
   const time = new Intl.DateTimeFormat("en-GB", { timeZone: tenant.business.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -41,22 +49,22 @@ async function slotsFor(tenant: ResolvedTenant, serviceId: string, staffMemberId
 }
 
 /** Horarios libres ("HH:mm") de un día concreto. */
-export async function loadDaySlots(serviceId: string, staffMemberId: string, day: string): Promise<string[]> {
-  if (!idSchema.safeParse(serviceId).success || !staffSchema.safeParse(staffMemberId).success || !daySchema.safeParse(day).success) {
+export async function loadDaySlots(serviceIds: string[], staffMemberId: string, day: string): Promise<string[]> {
+  if (!serviceIdsSchema.safeParse(serviceIds).success || !staffSchema.safeParse(staffMemberId).success || !daySchema.safeParse(day).success) {
     return [];
   }
-  return slotsFor(await getCurrentTenant(), serviceId, staffMemberId, day);
+  return slotsFor(await getCurrentTenant(), serviceIds, staffMemberId, day);
 }
 
 /** Primer día con horarios libres desde hoy. */
-export async function loadNextSlots(serviceId: string, staffMemberId: string): Promise<NextSlots> {
-  if (!idSchema.safeParse(serviceId).success || !staffSchema.safeParse(staffMemberId).success) return { day: null, slots: [] };
+export async function loadNextSlots(serviceIds: string[], staffMemberId: string): Promise<NextSlots> {
+  if (!serviceIdsSchema.safeParse(serviceIds).success || !staffSchema.safeParse(staffMemberId).success) return { day: null, slots: [] };
 
   const tenant = await getCurrentTenant();
   const today = todayIn(tenant.business.timezone);
   for (let i = 0; i < Math.min(SEARCH_DAYS, tenant.records.maxDaysAhead + 1); i++) {
     const day = shiftDay(today, i);
-    const slots = await slotsFor(tenant, serviceId, staffMemberId, day);
+    const slots = await slotsFor(tenant, serviceIds, staffMemberId, day);
     if (slots.length) return { day, slots };
   }
   return { day: null, slots: [] };
@@ -70,14 +78,14 @@ export interface BookingFormState {
 }
 
 const bookingSchema = z.object({
-  serviceId: idSchema,
+  serviceIds: serviceIdsSchema,
   staffMemberId: staffSchema,
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Selecciona un horario."),
   customerNotes: z.string().trim().max(500).optional(),
 });
 
 const ERROR_MESSAGES: Partial<Record<AppointmentErrorCode, string>> = {
-  SERVICE_NOT_FOUND: "El servicio seleccionado ya no está disponible.",
+  SERVICE_NOT_FOUND: "Alguno de los servicios seleccionados ya no está disponible.",
   STAFF_NOT_FOUND: "Ese estilista ya no está disponible.",
   OUT_OF_RANGE: "Elige una fecha futura dentro del rango permitido.",
   SLOT_TAKEN: "Ese horario ya no está disponible. Prueba con otro.",
@@ -89,7 +97,7 @@ export async function submitBooking(_prev: BookingFormState, fd: FormData): Prom
   const tenant = await getCurrentTenant();
 
   const parsed = bookingSchema.safeParse({
-    serviceId: fd.get("serviceId"),
+    serviceIds: fd.getAll("serviceIds"),
     staffMemberId: fd.get("staffMemberId") || "any",
     date: fd.get("date"),
     customerNotes: fd.get("customerNotes") || undefined,
@@ -100,10 +108,10 @@ export async function submitBooking(_prev: BookingFormState, fd: FormData): Prom
   if (!startTime) return { status: "error", message: "Fecha inválida." };
 
   try {
-    await createAppointment({
+    await createBooking({
       tenant,
       userId: user.id,
-      serviceId: parsed.data.serviceId,
+      serviceIds: parsed.data.serviceIds,
       staffMemberId: parsed.data.staffMemberId === "any" ? null : parsed.data.staffMemberId,
       startTime,
       customerNotes: parsed.data.customerNotes,
@@ -117,5 +125,6 @@ export async function submitBooking(_prev: BookingFormState, fd: FormData): Prom
     return { status: "error", message: "No pudimos registrar tu cita. Intenta de nuevo." };
   }
 
-  return { status: "success", message: "Tu cita quedó registrada. Te confirmaremos por WhatsApp." };
+  const message = parsed.data.serviceIds.length > 1 ? "Tus servicios quedaron reservados." : "Tu cita quedó registrada.";
+  return { status: "success", message: `${message} Te confirmaremos por WhatsApp.` };
 }

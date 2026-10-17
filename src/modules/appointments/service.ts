@@ -33,14 +33,42 @@ export interface CreateAppointmentInput {
   source: AppointmentSource;
 }
 
-export async function createAppointment(input: CreateAppointmentInput): Promise<Appointment> {
+export async function createAppointment({ serviceId, ...input }: CreateAppointmentInput): Promise<Appointment> {
+  const [appointment] = await createBooking({ ...input, serviceIds: [serviceId] });
+  return appointment;
+}
+
+/** Máximo de servicios en una misma reserva. */
+export const MAX_SERVICES_PER_BOOKING = 4;
+
+export interface CreateBookingInput extends Omit<CreateAppointmentInput, "serviceId"> {
+  /** Servicios en el orden en que se realizan; sin repetidos. */
+  serviceIds: string[];
+}
+
+/** Servicios activos en el orden pedido, o null si alguno no existe / está repetido / sobra. */
+export async function findBookingServices(tenantId: string, serviceIds: string[]) {
+  if (!serviceIds.length || serviceIds.length > MAX_SERVICES_PER_BOOKING || new Set(serviceIds).size !== serviceIds.length) {
+    return null;
+  }
+  const rows = await prisma.service.findMany({ where: { id: { in: serviceIds }, tenantId, active: true } });
+  if (rows.length !== serviceIds.length) return null;
+  return serviceIds.map((id) => rows.find((s) => s.id === id)!);
+}
+
+/**
+ * Reserva uno o varios servicios seguidos con el mismo estilista: el horario debe tener libre
+ * la duración total, y se crea una cita por servicio, encadenadas (la 2.ª empieza al acabar la 1.ª).
+ * Cada servicio sigue siendo su propia cita para el panel del estilista y las estadísticas.
+ */
+export async function createBooking(input: CreateBookingInput): Promise<Appointment[]> {
   const { tenant } = input;
 
-  const service = await prisma.service.findFirst({ where: { id: input.serviceId, tenantId: tenant.id, active: true } });
-  if (!service) throw new AppointmentError("SERVICE_NOT_FOUND");
+  const services = await findBookingServices(tenant.id, input.serviceIds);
+  if (!services) throw new AppointmentError("SERVICE_NOT_FOUND");
+  const totalMinutes = services.reduce((sum, s) => sum + s.durationMinutes, 0);
 
   const start = input.startTime;
-  const end = new Date(start.getTime() + service.durationMinutes * 60_000);
   const now = new Date();
   if (start <= now || start.getTime() > now.getTime() + tenant.records.maxDaysAhead * 86_400_000) {
     throw new AppointmentError("OUT_OF_RANGE");
@@ -59,25 +87,34 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
         const slots = await findAvailableSlots(tx, {
           tenant,
           day: todayIn(tenant.business.timezone, start),
-          durationMinutes: service.durationMinutes,
+          durationMinutes: totalMinutes,
           staffMemberId: input.staffMemberId,
           now,
         });
         const slot = slots.find((s) => s.start.getTime() === start.getTime());
         if (!slot) throw new AppointmentError("SLOT_TAKEN");
 
-        return tx.appointment.create({
-          data: {
-            tenantId: tenant.id,
-            userId: input.userId,
-            serviceId: service.id,
-            staffMemberId: slot.staffMemberIds[0] ?? null,
-            startTime: start,
-            endTime: end,
-            source: input.source,
-            customerNotes: input.customerNotes || null,
-          },
-        });
+        const created: Appointment[] = [];
+        let cursor = start.getTime();
+        for (const service of services) {
+          const end = cursor + service.durationMinutes * 60_000;
+          created.push(
+            await tx.appointment.create({
+              data: {
+                tenantId: tenant.id,
+                userId: input.userId,
+                serviceId: service.id,
+                staffMemberId: slot.staffMemberIds[0] ?? null,
+                startTime: new Date(cursor),
+                endTime: new Date(end),
+                source: input.source,
+                customerNotes: input.customerNotes || null,
+              },
+            }),
+          );
+          cursor = end;
+        }
+        return created;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
