@@ -1,4 +1,5 @@
-# NETLIFY_DB_URL solo existe en runtime (funciones), no en el build: las migraciones y el seed
-# de producción se aplican con `npm run db:netlify` desde tu máquina.
+# El esquema de producción lo gestiona Netlify Database: aplica automáticamente las migraciones
+# SQL de netlify/database/migrations en cada deploy (el usuario de runtime no puede hacer DDL).
+# Al cambiar prisma/schema.prisma, genera una migración nueva con `prisma migrate diff`.
 [build]
   command = "npm run build"
