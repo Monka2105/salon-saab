@@ -1,4 +1,4 @@
-import type { User } from "@prisma/client";
+import type { StaffMember, User } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/auth";
@@ -27,4 +27,18 @@ export async function requireAdmin(): Promise<User> {
   if (!user) redirect("/login?callbackUrl=/admin");
   if (user.role !== "ADMIN") redirect("/");
   return user;
+}
+
+/**
+ * Panel del estilista. Exige rol STAFF (o un ADMIN que también atiende) y una ficha de estilista activa
+ * vinculada a la cuenta: todo lo que ve y confirma queda limitado a esa ficha.
+ */
+export async function requireStaff(tenantId: string): Promise<{ user: User; staff: StaffMember }> {
+  const user = await getSessionUser();
+  if (!user) redirect("/login?callbackUrl=/staff");
+  if (user.role !== "STAFF" && user.role !== "ADMIN") redirect("/");
+
+  const staff = await prisma.staffMember.findFirst({ where: { userId: user.id, tenantId, active: true } });
+  if (!staff) redirect(user.role === "ADMIN" ? "/admin" : "/");
+  return { user, staff };
 }

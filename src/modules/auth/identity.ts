@@ -5,15 +5,20 @@ import { verifyOtp } from "./otp";
 // Un mismo celular = una misma persona en la web y en WhatsApp.
 // El agente busca al usuario por `phoneNumber`; `isPhoneVerified` indica que la web lo comprobó con OTP.
 
-/** Login passwordless: valida el OTP y devuelve (o crea) el usuario dueño del celular. */
-export async function signInWithPhone(phone: string, code: string): Promise<User | null> {
+/**
+ * Login/registro passwordless: valida el OTP y devuelve (o crea) el usuario dueño del celular.
+ * `name` (desde el registro) solo se guarda si la cuenta aún no tiene nombre: no pisa uno existente.
+ */
+export async function signInWithPhone(phone: string, code: string, name?: string): Promise<User | null> {
   if (!(await verifyOtp(phone, code))) return null;
 
-  return prisma.user.upsert({
+  const user = await prisma.user.upsert({
     where: { phoneNumber: phone },
-    create: { phoneNumber: phone, isPhoneVerified: true },
+    create: { phoneNumber: phone, isPhoneVerified: true, name },
     update: { isPhoneVerified: true },
   });
+  if (name && !user.name) return prisma.user.update({ where: { id: user.id }, data: { name } });
+  return user;
 }
 
 export type LinkPhoneResult = { ok: true } | { ok: false; error: "INVALID_CODE" | "PHONE_IN_USE" };
@@ -31,7 +36,7 @@ export async function linkPhoneToUser(userId: string, phone: string, code: strin
 
     if (owner && owner.id !== userId) {
       // Una cuenta con credenciales propias no se absorbe: requiere intervención del admin.
-      if (owner.email || owner.passwordHash || owner.role === "ADMIN") return { ok: false, error: "PHONE_IN_USE" } as const;
+      if (owner.email || owner.passwordHash || owner.role !== "USER") return { ok: false, error: "PHONE_IN_USE" } as const;
 
       await tx.appointment.updateMany({ where: { userId: owner.id }, data: { userId } });
       await tx.message.updateMany({ where: { userId: owner.id }, data: { userId } });

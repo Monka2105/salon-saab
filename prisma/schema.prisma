@@ -12,6 +12,8 @@ datasource db {
 
 enum Role {
   ADMIN
+  /// Estilista con cuenta: ve su agenda y confirma los servicios que realiza
+  STAFF
   USER
 }
 
@@ -81,8 +83,12 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  appointments Appointment[]
-  messages     Message[]
+  appointments          Appointment[] @relation("Customer")
+  /// Citas que esta cuenta confirmó como realizadas (estilista o admin)
+  completedAppointments Appointment[] @relation("CompletedBy")
+  /// Ficha de estilista vinculada (solo cuentas STAFF, o un ADMIN que también atiende)
+  staffProfile          StaffMember?
+  messages              Message[]
 }
 
 /// Código OTP de un solo uso enviado al celular. Se guarda solo el hash, nunca el código.
@@ -106,10 +112,13 @@ model StaffMember {
   specialty String?
   photoUrl  String?
   active    Boolean  @default(true)
+  /// Cuenta con la que el estilista inicia sesión (rol STAFF)
+  userId    String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointments Appointment[]
   availability Availability[]
   timeOff      TimeOff[]
@@ -181,21 +190,27 @@ model Appointment {
   status         AppointmentStatus @default(PENDING)
   /// Lo que pidió el cliente al reservar
   customerNotes  String?
-  /// Fórmulas, máquinas, técnica: obligatorio para pasar a COMPLETED
+  /// Fórmulas, máquinas, técnica (opcional al confirmar el servicio)
   executionNotes String?           @db.Text
-  /// 1–3 fotos del resultado (URLs del storage); obligatorio para pasar a COMPLETED
+  /// 0–3 fotos del resultado (URLs del storage)
   photoUrls      String[]          @default([])
+  /// Momento en que se confirmó el servicio como realizado (base de las estadísticas)
+  completedAt    DateTime?
+  /// Quién lo confirmó: el estilista que atendió o un admin
+  completedById  String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation("Customer", fields: [userId], references: [id], onDelete: Cascade)
+  completedBy User?        @relation("CompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   service     Service      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   staffMember StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, startTime])
   @@index([userId, startTime])
   @@index([staffMemberId, startTime])
+  @@index([tenantId, status, completedAt])
 }
 
 /// Historial de conversación de WhatsApp (memoria del agente).

@@ -38,12 +38,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       id: "phone-otp",
       name: "Celular",
-      credentials: { phone: {}, code: {} },
+      credentials: { phone: {}, code: {}, name: {} },
       async authorize(raw) {
         const parsed = phoneLoginSchema.safeParse(raw);
         if (!parsed.success) return null;
 
-        const user = await signInWithPhone(parsed.data.phone, parsed.data.code);
+        const user = await signInWithPhone(parsed.data.phone, parsed.data.code, parsed.data.name);
         if (!user) return null;
 
         return { id: user.id, name: user.name, email: user.email, role: user.role };

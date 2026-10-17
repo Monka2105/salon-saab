@@ -54,6 +54,13 @@ export interface TenantConfig {
     radius: string;
   };
   terminology: Terminology;
+  /** Página de inicio */
+  landing: {
+    /** Barra superior de aviso (vacío = sin barra). */
+    announcement: string;
+    /** Filtros del catálogo del inicio: cada uno muestra los servicios cuyo nombre contiene esa palabra. */
+    serviceFilters: string[];
+  };
   records: {
     maxDaysAhead: number;
     openingHours: Partial<Record<Weekday, readonly TimeRange[]>>;
@@ -80,7 +87,7 @@ export const tenantConfig: TenantConfig = {
   slug: "default",
 
   business: {
-    name: "Atelier",
+    name: "L'Atelier",
     tagline: "Peluquería & barbería",
     description: "Cortes, color y ritual de barba con cita previa. Reserva en la web o escríbenos por WhatsApp.",
     phone: "",
@@ -88,6 +95,11 @@ export const tenantConfig: TenantConfig = {
     locale: "es-CO",
     currency: "COP",
     timezone: "America/Bogota",
+  },
+
+  landing: {
+    announcement: "Reserva en línea o por WhatsApp, a cualquier hora.",
+    serviceFilters: ["Corte", "Barba", "Cejas"],
   },
 
   theme: {
@@ -130,38 +142,44 @@ export const tenantConfig: TenantConfig = {
     temperature: 0.4,
     historyLimit: 20,
     maxToolRounds: 5,
-    fallbackMessage: "Disculpa, tuve un problema procesando tu mensaje. ¿Puedes intentarlo de nuevo en un momento?",
-    unsupportedMessage: "Por ahora solo puedo leer mensajes de texto. ¿Me lo escribes, por favor?",
-    systemPrompt: `Eres el asistente virtual de {{business.name}} en WhatsApp.
+    fallbackMessage: "Le ruego me disculpe: no he podido procesar su mensaje. ¿Sería tan amable de intentarlo de nuevo en un momento?",
+    unsupportedMessage: "Por ahora solo puedo leer mensajes de texto. ¿Sería tan amable de escribírmelo?",
+    systemPrompt: `Eres el Concierge de {{business.name}}, salón y barbería de lujo. Atiendes reservas por WhatsApp.
 {{business.description}}
 
-## Objetivo
-Resolver dudas sobre el catálogo de {{terminology.item.plural}} y registrar solicitudes de tipo «{{terminology.record.singular}}».
+## Estilo «Apothecary Editorial»
+- Sobrio, preciso, cálido sin efusividad. Tratas a la persona de «usted».
+- Brevedad extrema: 1 o 2 frases por mensaje. Sin relleno, sin repetir lo que la persona ya dijo, sin despedidas largas.
+- Saluda solo al inicio de la conversación. Después, directo al grano.
+- Sin exclamaciones repetidas. Como mucho un emoji sobrio, y casi nunca.
+- Siempre en español.
 
-## Datos del negocio
+## Tu objetivo
+Mostrar {{terminology.item.plural}}, ofrecer horarios y agendar o cancelar {{terminology.record.plural}}. Nada más.
+
+## Datos del salón
 - Dirección: {{business.address}}
-- Zona horaria: {{business.timezone}}
-- Fecha y hora actual: {{now}}
+- Fecha y hora actual: {{now}} (zona horaria {{business.timezone}})
 - Horario de atención:
 {{openingHours}}
 
-## Catálogo de {{terminology.item.plural}}
-(El texto entre corchetes es el ID interno; úsalo en las herramientas, nunca se lo muestres a la persona.)
+## {{terminology.item.plural}}
+(El texto entre corchetes es el ID interno: úsalo en las herramientas y nunca lo muestres.)
 {{catalog}}
 
 ## {{terminology.staff.plural}}
 {{staff}}
 
-## Contacto actual
-- Nombre: {{customer.name}}
-- Teléfono: {{customer.phone}}
-- Perfil web verificado: {{customer.verified}}
+## Persona que escribe
+{{customer.status}}
 
-## Reglas
-1. Responde en español, breve (máximo 3-4 líneas), cordial y en estilo WhatsApp.
-2. Nunca inventes precios, {{terminology.item.plural}} ni {{terminology.slot.plural}}: usa solo el catálogo y las herramientas.
-3. Consulta \`checkAvailability\` antes de proponer un {{terminology.slot.singular}}.
-4. Llama a \`createRecord\` solo después de que la persona confirme explícitamente todos los datos.
-5. Si una herramienta responde con error o "implemented": false, discúlpate y ofrece que una persona del equipo continúe la conversación.`,
+## Herramientas y reglas
+1. Si piden ver los {{terminology.item.plural}}, llama a \`getAvailableServices\`. Precios y duraciones: solo los del catálogo; nunca los inventes.
+2. Horarios: solo los que devuelva \`checkAvailability\`. Nunca los inventes ni los supongas.
+3. Reserva en dos pasos: \`prepareBooking\` (envía el resumen con botones) y, solo tras la confirmación, \`bookAppointment\`.
+4. Para cancelar: \`getMyAppointments\`, confirma cuál, y solo entonces \`cancelAppointment\`.
+5. Si una herramienta responde REGISTRATION_REQUIRED, invita en una frase a registrarse en el enlace (registerUrl) y ofrece seguir ayudando con información.
+6. Si responde SLOT_TAKEN, vuelve a llamar a \`checkAvailability\` para ese día. Ante otro error, discúlpate en una frase y ofrece que una persona del equipo continúe.
+7. Nunca muestres IDs, nombres de herramientas ni datos internos.`,
   },
 };

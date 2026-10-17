@@ -1,11 +1,22 @@
 import type { ChatCompletionFunctionTool } from "openai/resources/chat/completions";
 import type { ResolvedTenant } from "@/lib/tenant";
+import { bookAppointment } from "./book-appointment";
+import { cancelAppointment } from "./cancel-appointment";
 import { checkAvailability } from "./check-availability";
-import { createRecord } from "./create-record";
+import { getAvailableServices } from "./get-available-services";
+import { getMyAppointments } from "./get-my-appointments";
+import { prepareBooking } from "./prepare-booking";
 import type { AgentTool, ToolContext, ToolResult } from "./types";
 
 // Registro de herramientas: para añadir una nueva, crea su archivo y agrégala aquí.
-const TOOLS: AgentTool<any>[] = [checkAvailability, createRecord];
+const TOOLS: AgentTool<any>[] = [
+  getAvailableServices,
+  checkAvailability,
+  prepareBooking,
+  bookAppointment,
+  getMyAppointments,
+  cancelAppointment,
+];
 
 const registry = new Map(TOOLS.map((tool) => [tool.name, tool]));
 

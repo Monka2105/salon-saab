@@ -75,7 +75,7 @@ export default async function AccountPage() {
         ) : (
           <div>
             <p className="text-[15px] text-ash">No tienes {terms.record.plural.toLowerCase()} próximas.</p>
-            <Link href="/catalog" className="link-cta mt-6">
+            <Link href="/#servicios" className="link-cta mt-6">
               {terms.ctaPrimary}
             </Link>
           </div>

@@ -10,7 +10,7 @@ export const CUSTOMER_CANCELLABLE: AppointmentStatus[] = ["PENDING"];
 
 /**
  * Transiciones que el admin puede hacer con un simple cambio de estado.
- * ACTIVE → COMPLETED NO está aquí: exige notas de ejecución + fotos (ver completeAppointment).
+ * → COMPLETED NO está aquí: registra quién y cuándo confirmó el servicio (ver completeAppointment).
  * → NO_SHOW tampoco: incrementa noShowCount (ver markNoShow).
  */
 export const MANUAL_TRANSITIONS: Partial<Record<AppointmentStatus, AppointmentStatus[]>> = {

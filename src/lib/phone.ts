@@ -11,3 +11,8 @@ export function normalizePhone(raw: string): string | null {
 export function maskPhone(phone: string): string {
   return `+${phone.slice(0, 2)} •••• ${phone.slice(-4)}`;
 }
+
+/** Cómo mostrar a un cliente en listas internas: nombre, o su celular enmascarado. */
+export function customerLabel(user: { name: string | null; phoneNumber: string | null }): string {
+  return user.name ?? (user.phoneNumber ? maskPhone(user.phoneNumber) : "Sin nombre");
+}

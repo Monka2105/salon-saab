@@ -25,6 +25,7 @@ async function main() {
   const { default: qrcode } = await import("qrcode-terminal");
   // Import dinámico: los módulos leen process.env al cargarse, después de loadEnvFile.
   const { handleInboundMessage } = await import("@/modules/agent/router");
+  const { renderAsText } = await import("@/modules/agent/reply");
 
   type WAMessage = import("@whiskeysockets/baileys").WAMessage;
 
@@ -95,14 +96,21 @@ async function main() {
             timestamp: new Date(Number(m.messageTimestamp ?? Date.now() / 1000) * 1000),
           },
           {
-            sendText: async (reply) => {
-              await sock.sendMessage(jid, { text: reply });
+            // WhatsApp Web (Baileys) no envía listas ni botones de forma fiable: se mandan como texto con las opciones.
+            send: async (reply) => {
+              await sock.sendMessage(jid, { text: renderAsText(reply) });
             },
             markAsRead: () => sock.readMessages([m.key]),
           },
         ).catch((err) => console.error("[whatsapp-web] handler failed", err));
       }
     });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn(
+      "[whatsapp-web] ⚠ OPENAI_API_KEY está vacía en .env: la IA no puede responder y todo mensaje recibirá el texto de disculpa (fallbackMessage).",
+    );
   }
 
   startSendServer(() => current);

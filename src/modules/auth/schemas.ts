@@ -27,10 +27,17 @@ export const otpCodeSchema = z.string().trim().regex(/^\d{6}$/, "El código tien
 
 export const credentialsLoginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(128) });
 
-export const phoneLoginSchema = z.object({ phone: phoneSchema, code: otpCodeSchema });
+export const nameSchema = z.string().trim().min(2, "Ingresa tu nombre.").max(80);
+
+/** `name` solo llega desde el registro; en el login por celular va vacío. */
+export const phoneLoginSchema = z.object({
+  phone: phoneSchema,
+  code: otpCodeSchema,
+  name: z.preprocess((v) => (v === "" ? undefined : v), nameSchema.optional()),
+});
 
 export const registerSchema = z.object({
-  name: z.string().trim().min(2, "Ingresa tu nombre.").max(80),
+  name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
 });

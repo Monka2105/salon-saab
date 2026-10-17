@@ -18,7 +18,8 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <p className="micro-label text-ash">Cuenta</p>
         <h1 className="headline mt-5">Crea tu perfil.</h1>
         <p className="mt-6 text-lg leading-[1.35]">
-          Después podrás verificar tu celular para gestionar tus citas también desde WhatsApp.
+          Solo tu nombre y tu celular. Te enviamos un código por WhatsApp y te reconoceremos también cuando nos
+          escribas por ahí.
         </p>
       </div>
       <div className="bg-white p-8 sm:p-12">

@@ -26,7 +26,7 @@ export default async function MyAppointmentsPage() {
           <p className="micro-label text-ash">Mi cuenta</p>
           <h1 className="headline mt-5">Mis {terms.record.plural.toLowerCase()}</h1>
         </div>
-        <Link href="/new" className="link-cta">
+        <Link href="/#servicios" className="link-cta">
           {terms.ctaPrimary}
         </Link>
       </header>

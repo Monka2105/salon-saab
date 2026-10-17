@@ -36,8 +36,6 @@ export default async function AdminServicesPage() {
               price: fromMinorUnits(s.price, business),
               description: s.description ?? "",
               durationMinutes: s.durationMinutes,
-              sortOrder: s.sortOrder,
-              imageUrl: s.imageUrl ?? "",
             },
           }))}
         />

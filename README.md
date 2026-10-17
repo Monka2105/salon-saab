@@ -44,7 +44,7 @@ src/
     whatsapp/              Cloud API: parser · signature · client
     agent/                 router · run-agent · prompt · tools
   components/services/     ServicesView · ServiceBlock · StaffPicker (vista de catálogo)
-  app/                     / · catalog · new · login · register · account · admin · api/auth · api/webhook
+  app/                     / · catalog · new · login · register · account · admin · api/auth · api/webhook/whatsapp
 scripts/whatsapp-web.ts    Bot vía WhatsApp Web (Baileys) + API local de envío de OTP
 ```
 
@@ -60,7 +60,7 @@ Nombre, colores, teléfono, prompt y terminología también se pueden sobrescrib
 
 1. En Meta for Developers crea una app tipo *Business* y añade el producto **WhatsApp**.
 2. Expón tu servidor (p. ej. `ngrok http 3000`) y configura el webhook:
-   - Callback URL: `https://<tu-dominio>/api/webhook`
+   - Callback URL: `https://<tu-dominio>/api/webhook/whatsapp` (la antigua `/api/webhook` sigue funcionando)
    - Verify token: el valor de `WHATSAPP_VERIFY_TOKEN`
    - Suscríbete al campo `messages`.
 3. Completa `WHATSAPP_APP_SECRET` y `WHATSAPP_ACCESS_TOKEN` (token permanente de System User).

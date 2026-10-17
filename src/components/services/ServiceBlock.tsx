@@ -31,7 +31,7 @@ export function ServiceBlock({ service, index, tenant }: Props) {
         <p className="micro-label">
           {service.durationMinutes} min{price && <span className="text-ash"> · {price}</span>}
         </p>
-        <Link href={`/new?service=${service.id}`} className="link-cta">
+        <Link href={`/servicios/${service.id}`} className="link-cta">
           {tenant.terminology.ctaPrimary}
         </Link>
       </div>

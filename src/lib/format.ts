@@ -134,3 +134,18 @@ export function zonedDayMinutesToUtc(day: string, minutes: number, timeZone: str
   const dayOffset = Math.floor(minutes / 1440);
   return zonedLocalToUtc(`${shiftDay(day, dayOffset)}T${minutesToTime(minutes - dayOffset * 1440)}`, timeZone);
 }
+
+/** "YYYY-MM" ± n meses. */
+export function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+/** [inicio, fin) de un mes "YYYY-MM" en la zona horaria del negocio. */
+export function zonedMonthRange(month: string, timeZone: string): { from: Date; to: Date } {
+  return {
+    from: zonedLocalToUtc(`${month}-01T00:00`, timeZone)!,
+    to: zonedLocalToUtc(`${shiftMonth(month, 1)}-01T00:00`, timeZone)!,
+  };
+}

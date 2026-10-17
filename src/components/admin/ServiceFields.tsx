@@ -5,8 +5,6 @@ export interface ServiceDefaults {
   price: string;
   description: string;
   durationMinutes: number;
-  sortOrder: number;
-  imageUrl: string;
 }
 
 export function ServiceFields({ currency, defaults }: { currency: string; defaults?: ServiceDefaults }) {
@@ -23,10 +21,8 @@ export function ServiceFields({ currency, defaults }: { currency: string; defaul
         max={600}
         placeholder="Duración (min)"
         defaultValue={defaults?.durationMinutes}
-        className="input"
+        className="input sm:col-span-2"
       />
-      <input name="sortOrder" type="number" placeholder="Orden" defaultValue={defaults?.sortOrder} className="input" />
-      <input name="imageUrl" type="url" placeholder="URL de imagen https:// (opcional)" defaultValue={defaults?.imageUrl} className="input sm:col-span-2" />
     </>
   );
 }

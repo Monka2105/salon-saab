@@ -13,9 +13,10 @@ export default async function AdminAvailabilityPage({ searchParams }: { searchPa
   const staffList = await prisma.staffMember.findMany({
     where: { tenantId: tenant.id, active: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, specialty: true },
+    select: { id: true, name: true, specialty: true, user: { select: { email: true } } },
   });
-  const current = staffList.find((s) => s.id === params.staff) ?? staffList[0];
+  const selected = staffList.find((s) => s.id === params.staff) ?? staffList[0];
+  const current = selected && { id: selected.id, name: selected.name, specialty: selected.specialty, email: selected.user?.email ?? null };
 
   if (!current) {
     return (

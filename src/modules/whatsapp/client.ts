@@ -1,3 +1,5 @@
+import type { WaInteractive } from "./types";
+
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
 const MAX_TEXT_LENGTH = 4096;
 
@@ -24,6 +26,11 @@ export async function sendTextMessage(phoneNumberId: string, to: string, text: s
   for (const part of chunk(text, MAX_TEXT_LENGTH)) {
     await graphPost(phoneNumberId, { recipient_type: "individual", to, type: "text", text: { body: part } });
   }
+}
+
+/** Lista o botones de respuesta rápida. El llamador respeta los límites de Meta (ver WaInteractive). */
+export async function sendInteractiveMessage(phoneNumberId: string, to: string, interactive: WaInteractive): Promise<void> {
+  await graphPost(phoneNumberId, { recipient_type: "individual", to, type: "interactive", interactive });
 }
 
 /**

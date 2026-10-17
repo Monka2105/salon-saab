@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="bg-white p-8 sm:p-12">
         <LoginForms callbackUrl={callbackUrl} />
         <p className="mt-10 border-t border-stone pt-6 text-[15px] text-ash">
-          ¿Prefieres email?{" "}
+          ¿Primera vez aquí?
           <Link href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="link-cta ml-2">
             Crear cuenta
           </Link>

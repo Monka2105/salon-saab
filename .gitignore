@@ -12,3 +12,5 @@ prisma/*.db-journal
 
 # Sesión de WhatsApp Web (Baileys) — contiene credenciales
 .wa-auth/
+# Respaldos de sesiones anteriores (también contienen credenciales)
+.wa-auth*/

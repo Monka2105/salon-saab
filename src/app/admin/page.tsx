@@ -4,7 +4,7 @@ import { shiftDay, todayIn, zonedLocalToUtc } from "@/lib/format";
 import { maskPhone } from "@/lib/phone";
 import { getCurrentTenant } from "@/lib/tenant";
 import { MANUAL_TRANSITIONS } from "@/modules/appointments/status";
-import { markAppointmentNoShow, updateAppointmentStatus } from "./actions";
+import { confirmAppointmentDone, markAppointmentNoShow, updateAppointmentStatus } from "./actions";
 
 /** Agenda del día: la vista de trabajo del salón. */
 export default async function AdminDayPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
@@ -48,6 +48,7 @@ export default async function AdminDayPage({ searchParams }: { searchParams: Pro
         {appointments.map((a) => {
           const transitions = MANUAL_TRANSITIONS[a.status] ?? [];
           const canNoShow = a.status === "PENDING" || a.status === "ACTIVE";
+          const canComplete = canNoShow && a.startTime <= new Date();
           return (
             <li key={a.id} className="grid gap-4 border-t border-stone py-6 md:grid-cols-[90px_1fr_1fr_auto] md:gap-8">
               <p className="font-serif text-2xl leading-none">{time.format(a.startTime)}</p>
@@ -82,6 +83,12 @@ export default async function AdminDayPage({ searchParams }: { searchParams: Pro
                     <button className="btn-secondary">{terms.statusLabels[to]}</button>
                   </form>
                 ))}
+                {canComplete && (
+                  <form action={confirmAppointmentDone}>
+                    <input type="hidden" name="id" value={a.id} />
+                    <button className="btn-primary">Confirmar realizado</button>
+                  </form>
+                )}
                 {canNoShow && (
                   <form action={markAppointmentNoShow}>
                     <input type="hidden" name="id" value={a.id} />

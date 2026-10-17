@@ -9,8 +9,9 @@ import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { shiftDay, timeToMinutes, toMinorUnits, WEEKDAYS, zonedLocalToUtc } from "@/lib/format";
 import { getCurrentTenant } from "@/lib/tenant";
-import { markNoShow, transitionAppointment } from "@/modules/appointments/service";
+import { completeAppointment, markNoShow, transitionAppointment } from "@/modules/appointments/service";
 import { BLOCKING_STATUSES } from "@/modules/appointments/status";
+import { type ChangeRoleError, changeUserRole, releaseStaffAccount, setStaffAccount, type StaffAccountError } from "@/modules/staff/account";
 import { isAppointmentStatus } from "@/modules/appointments/status";
 
 // Cada acción llama a requireAdmin(): las Server Actions son endpoints POST públicos.
@@ -46,6 +47,18 @@ export async function markAppointmentNoShow(formData: FormData) {
   revalidatePath("/admin");
 }
 
+/** El admin confirma un servicio realizado (p. ej. si el estilista no tiene cuenta). */
+export async function confirmAppointmentDone(formData: FormData) {
+  const admin = await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const id = idSchema.safeParse(text(formData, "id"));
+  if (!id.success) return;
+
+  await completeAppointment({ tenantId: tenant.id, appointmentId: id.data, actorUserId: admin.id }).catch(() => undefined);
+  revalidatePath("/admin");
+  revalidatePath("/admin/stats");
+}
+
 // ── Servicios ─────────────────────────────────────────────────
 
 const serviceSchema = z.object({
@@ -53,8 +66,6 @@ const serviceSchema = z.object({
   description: z.string().trim().max(1000).nullable(),
   price: z.number().int().nonnegative(),
   durationMinutes: z.number().int().min(5).max(600),
-  imageUrl: z.string().url().startsWith("https://").nullable(),
-  sortOrder: z.number().int(),
 });
 
 function parseService(formData: FormData, business: Parameters<typeof toMinorUnits>[1]) {
@@ -63,16 +74,15 @@ function parseService(formData: FormData, business: Parameters<typeof toMinorUni
     description: nullable(formData, "description"),
     price: toMinorUnits(text(formData, "price"), business),
     durationMinutes: Number(text(formData, "durationMinutes")),
-    imageUrl: nullable(formData, "imageUrl"),
-    sortOrder: Number(text(formData, "sortOrder")) || 0,
   });
 }
 
-/** El catálogo público, /new y el agente leen servicios: se revalidan junto con el admin. */
+/** El catálogo público, las páginas de reserva y el agente leen servicios: se revalidan junto con el admin. */
 function revalidateServices() {
   revalidatePath("/admin/services");
   revalidatePath("/catalog");
-  revalidatePath("/new");
+  revalidatePath("/");
+  revalidatePath("/servicios/[id]", "page");
 }
 
 export async function createService(formData: FormData) {
@@ -81,7 +91,9 @@ export async function createService(formData: FormData) {
   const parsed = parseService(formData, tenant.business);
   if (!parsed.success) return;
 
-  await prisma.service.create({ data: { tenantId: tenant.id, ...parsed.data } });
+  // Sin campo "Orden" en el admin: un servicio nuevo va al final del catálogo; al editar se conserva su posición.
+  const last = await prisma.service.aggregate({ where: { tenantId: tenant.id }, _max: { sortOrder: true } });
+  await prisma.service.create({ data: { tenantId: tenant.id, ...parsed.data, sortOrder: (last._max.sortOrder ?? 0) + 1 } });
   revalidateServices();
 }
 
@@ -119,39 +131,79 @@ export async function deleteService(formData: FormData) {
 const staffSchema = z.object({
   name: z.string().trim().min(2).max(80),
   specialty: z.string().trim().max(80).nullable(),
+  /** Correo de la cuenta con la que inicia sesión; vacío = sin cuenta */
+  email: z.string().trim().toLowerCase().email("Correo inválido.").nullable(),
 });
 
 const parseStaff = (formData: FormData) =>
-  staffSchema.safeParse({ name: text(formData, "name"), specialty: nullable(formData, "specialty") });
+  staffSchema.safeParse({ name: text(formData, "name"), specialty: nullable(formData, "specialty"), email: nullable(formData, "email") });
 
-/** El selector de estilista aparece en el catálogo, en /new y en la agenda. */
+const ACCOUNT_ERRORS: Record<StaffAccountError, string> = {
+  NO_ACCOUNT: "Ese correo no tiene cuenta. Pídele que se registre en /register y vuelve a intentarlo.",
+  ALREADY_LINKED: "Esa cuenta ya está vinculada a otro estilista.",
+};
+
+/** Se lanza dentro de la transacción para revertir el alta si la cuenta no se puede vincular. */
+class StaffAccountFailure extends Error {
+  constructor(public readonly code: StaffAccountError) {
+    super(code);
+  }
+}
+
+export interface StaffFormState {
+  error?: string;
+}
+
+/** El selector de estilista aparece en la reserva de cada servicio y en la agenda. */
 function revalidateStaff() {
   revalidatePath("/admin/availability");
   revalidatePath("/admin");
-  revalidatePath("/catalog");
-  revalidatePath("/new");
+  revalidatePath("/admin/stats");
+  revalidatePath("/servicios/[id]", "page");
 }
 
-export async function createStaff(formData: FormData) {
+export async function createStaff(formData: FormData): Promise<StaffFormState> {
   await requireAdmin();
   const tenant = await getCurrentTenant();
   const parsed = parseStaff(formData);
-  if (!parsed.success) return;
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const staff = await prisma.staffMember.create({ data: { tenantId: tenant.id, ...parsed.data } });
+  const { email, ...data } = parsed.data;
+  let staffId: string;
+  try {
+    staffId = await prisma.$transaction(async (tx) => {
+      const staff = await tx.staffMember.create({ data: { tenantId: tenant.id, ...data } });
+      const error = await setStaffAccount(tx, staff.id, email);
+      if (error) throw new StaffAccountFailure(error);
+      return staff.id;
+    });
+  } catch (err) {
+    if (err instanceof StaffAccountFailure) return { error: ACCOUNT_ERRORS[err.code] };
+    throw err;
+  }
+
   revalidateStaff();
-  redirect(`/admin/availability?staff=${staff.id}`);
+  redirect(`/admin/availability?staff=${staffId}`);
 }
 
-export async function updateStaff(formData: FormData) {
+export async function updateStaff(formData: FormData): Promise<StaffFormState> {
   await requireAdmin();
   const tenant = await getCurrentTenant();
   const id = idSchema.safeParse(text(formData, "id"));
   const parsed = parseStaff(formData);
-  if (!id.success || !parsed.success) return;
+  if (!id.success) return { error: "Estilista inválido." };
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  await prisma.staffMember.updateMany({ where: { id: id.data, tenantId: tenant.id, active: true }, data: parsed.data });
+  const { email, ...data } = parsed.data;
+  const error = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.staffMember.updateMany({ where: { id: id.data, tenantId: tenant.id, active: true }, data });
+    if (count !== 1) return null;
+    return setStaffAccount(tx, id.data, email);
+  });
+  if (error) return { error: ACCOUNT_ERRORS[error] };
+
   revalidateStaff();
+  return {};
 }
 
 /**
@@ -174,9 +226,48 @@ export async function deleteStaff(formData: FormData): Promise<{ error?: string 
   }
 
   const where = { id: id.data, tenantId: tenant.id };
+  if (!(await prisma.staffMember.count({ where }))) return { error: "Estilista inválido." };
   const hasHistory = (await prisma.appointment.count({ where: { staffMemberId: id.data, tenantId: tenant.id } })) > 0;
-  if (hasHistory) await prisma.staffMember.updateMany({ where, data: { active: false } });
-  else await prisma.staffMember.deleteMany({ where });
+  await prisma.$transaction(async (tx) => {
+    // La cuenta pierde el acceso al panel de estilista; el historial conserva quién atendió.
+    await releaseStaffAccount(tx, id.data);
+    if (hasHistory) await tx.staffMember.updateMany({ where, data: { active: false } });
+    else await tx.staffMember.deleteMany({ where });
+  });
+  revalidateStaff();
+  return {};
+}
+
+// ── Usuarios ──────────────────────────────────────────────────
+
+const ROLE_ERRORS: Record<ChangeRoleError, string> = {
+  SELF: "No puedes cambiar tu propio rol.",
+  LAST_ADMIN: "Es el único admin: nombra otro admin antes de quitarle el rol.",
+  USER_NOT_FOUND: "Esa cuenta ya no existe.",
+  STAFF_NOT_FOUND: "Elige la ficha de estilista que le corresponde.",
+  STAFF_TAKEN: "Esa ficha ya está vinculada a otra cuenta.",
+};
+
+const roleChangeSchema = z.object({
+  userId: idSchema,
+  role: z.enum(["USER", "STAFF", "ADMIN"]),
+  staffMemberId: z.union([z.literal("new"), idSchema]).optional(),
+});
+
+export async function changeRole(formData: FormData): Promise<{ error?: string }> {
+  const admin = await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const parsed = roleChangeSchema.safeParse({
+    userId: text(formData, "userId"),
+    role: text(formData, "role"),
+    staffMemberId: text(formData, "staffMemberId") || undefined,
+  });
+  if (!parsed.success) return { error: "Datos inválidos." };
+
+  const error = await changeUserRole({ tenantId: tenant.id, actorId: admin.id, ...parsed.data });
+  if (error) return { error: ROLE_ERRORS[error] };
+
+  revalidatePath("/admin/users");
   revalidateStaff();
   return {};
 }

@@ -121,8 +121,14 @@ function allowedPhotoHosts(): string[] {
     .filter(Boolean);
 }
 
+// Fotos opcionales mientras no exista subida de archivos; cuando exista, volver a exigir .min(1).
 export const completionSchema = z.object({
-  executionNotes: z.string().trim().min(10, "Describe fórmulas, técnica o máquinas usadas.").max(5000),
+  executionNotes: z
+    .string()
+    .trim()
+    .max(5000)
+    .transform((v) => v || null)
+    .optional(),
   photoUrls: z
     .array(
       z
@@ -133,18 +139,38 @@ export const completionSchema = z.object({
           return url.protocol === "https:" && allowedPhotoHosts().includes(url.hostname);
         }, "Las fotos deben venir del almacenamiento autorizado."),
     )
-    .min(1, "Sube al menos 1 foto del resultado.")
-    .max(3, "Máximo 3 fotos."),
+    .max(3, "Máximo 3 fotos.")
+    .default([]),
 });
 
-/** ACTIVE → COMPLETED. Exige notas de ejecución y 1–3 fotos del resultado. */
-export async function completeAppointment(tenantId: string, id: string, input: unknown): Promise<void> {
-  const parsed = completionSchema.safeParse(input);
+export interface CompleteAppointmentInput {
+  tenantId: string;
+  appointmentId: string;
+  /** Cuenta que confirma (estilista o admin); queda en completedById. */
+  actorUserId: string;
+  /** Si se indica, solo puede confirmar citas de ese estilista (panel /staff). */
+  staffMemberId?: string;
+  details?: unknown;
+}
+
+/**
+ * PENDING/ACTIVE → COMPLETED, solo si la cita ya empezó. Guarda quién y cuándo la confirmó:
+ * cita + cliente + estilista + completedAt es el registro de "servicios realizados".
+ */
+export async function completeAppointment(input: CompleteAppointmentInput): Promise<void> {
+  const parsed = completionSchema.safeParse(input.details ?? {});
   if (!parsed.success) throw new AppointmentError("INVALID_COMPLETION");
 
+  const now = new Date();
   const { count } = await prisma.appointment.updateMany({
-    where: { id, tenantId, status: "ACTIVE" },
-    data: { status: "COMPLETED", ...parsed.data },
+    where: {
+      id: input.appointmentId,
+      tenantId: input.tenantId,
+      status: { in: BLOCKING_STATUSES },
+      startTime: { lte: now },
+      ...(input.staffMemberId && { staffMemberId: input.staffMemberId }),
+    },
+    data: { status: "COMPLETED", completedAt: now, completedById: input.actorUserId, ...parsed.data },
   });
   if (count !== 1) throw new AppointmentError("INVALID_TRANSITION");
 }

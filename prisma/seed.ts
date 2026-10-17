@@ -34,15 +34,16 @@ async function main() {
   if ((await prisma.service.count({ where: { tenantId: tenant.id } })) === 0) {
     await prisma.service.createMany({
       data: [
-        { title: "Corte de autor", description: "Diagnóstico, lavado ritual y corte a tijera con acabado.", price: 65000, durationMinutes: 60, sortOrder: 1 },
-        { title: "Ritual de barba", description: "Toalla caliente, perfilado a navaja y aceites botánicos.", price: 40000, durationMinutes: 45, sortOrder: 2 },
-        { title: "Color & brillo", description: "Coloración a medida con gloss final.", price: 120000, durationMinutes: 120, sortOrder: 3 },
-        { title: "Corte + barba", description: "El servicio completo, sin prisas.", price: 95000, durationMinutes: 90, sortOrder: 4 },
-        { title: "Peinado de evento", description: "Ondas, recogidos o acabado pulido.", price: 55000, durationMinutes: 60, sortOrder: 5 },
-        { title: "Tratamiento capilar", description: "Hidratación profunda y masaje de cuero cabelludo.", price: 45000, durationMinutes: 45, sortOrder: 6 },
+        { title: "Arreglo de barba", description: "Arreglo de barba a tu gusto 💎 Precio desde $6.000.", price: 6000, durationMinutes: 25, sortOrder: 1 },
+        { title: "Corte desvanecidos o modernos", description: "Corte con desvanecidos o modernos + diseño.", price: 20000, durationMinutes: 40, sortOrder: 2 },
+        { title: "Corte + barba + cejas", description: "Corte de cabello con arreglo de barba más cejas. Precio desde $27.000.", price: 27000, durationMinutes: 60, sortOrder: 3 },
+        { title: "Arreglo de cejas", description: "Arreglo de cejas.", price: 3000, durationMinutes: 5, sortOrder: 4 },
+        { title: "Corte de pelo + arreglo de barba", description: "Corte de cabello y arreglo de barba. Precio desde $25.000.", price: 25000, durationMinutes: 60, sortOrder: 5 },
+        { title: "Corte + cejas", description: "Corte de cabello más arreglo de cejas.", price: 22000, durationMinutes: 40, sortOrder: 6 },
+        { title: "Corte hombre + mascarilla", description: "Corte de cabello más aplicación de mascarilla.", price: 22000, durationMinutes: 40, sortOrder: 7 },
       ].map((s) => ({ ...s, tenantId: tenant.id })),
     });
-    console.log("Servicios de ejemplo creados.");
+    console.log("Servicios creados.");
   }
 
   if ((await prisma.staffMember.count({ where: { tenantId: tenant.id } })) === 0) {

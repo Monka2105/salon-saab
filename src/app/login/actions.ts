@@ -6,7 +6,7 @@ import { signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { maskPhone } from "@/lib/phone";
 import { requestOtp } from "@/modules/auth/otp";
-import { otpCodeSchema, phoneSchema, registerSchema, safeCallbackUrl } from "@/modules/auth/schemas";
+import { nameSchema, otpCodeSchema, phoneSchema, registerSchema, safeCallbackUrl } from "@/modules/auth/schemas";
 
 export interface AuthFormState {
   error?: string;
@@ -14,6 +14,8 @@ export interface AuthFormState {
   /** Flujo por celular: tras enviar el código se pasa al paso "code" */
   step?: "phone" | "code";
   phone?: string;
+  /** Registro por celular: el nombre viaja al paso del código */
+  name?: string;
 }
 
 const field = (fd: FormData, name: string) => String(fd.get(name) ?? "");
@@ -37,13 +39,15 @@ export async function loginWithEmail(_prev: AuthFormState, fd: FormData): Promis
   );
 }
 
-export async function requestPhoneCode(_prev: AuthFormState, fd: FormData): Promise<AuthFormState> {
-  const parsed = phoneSchema.safeParse(field(fd, "phone"));
-  if (!parsed.success) return { step: "phone", error: parsed.error.issues[0].message };
+/** Valida el celular y envía el código; `extra` se conserva en el estado para el paso siguiente. */
+async function sendPhoneCode(rawPhone: string, extra: Partial<AuthFormState> = {}): Promise<AuthFormState> {
+  const parsed = phoneSchema.safeParse(rawPhone);
+  if (!parsed.success) return { ...extra, step: "phone", error: parsed.error.issues[0].message };
 
   const result = await requestOtp(parsed.data);
   if (!result.ok) {
     return {
+      ...extra,
       step: "phone",
       error:
         result.error === "TOO_MANY_REQUESTS"
@@ -51,19 +55,36 @@ export async function requestPhoneCode(_prev: AuthFormState, fd: FormData): Prom
           : "No pudimos enviar el código. Intenta de nuevo en un momento.",
     };
   }
-  return { step: "code", phone: parsed.data, info: `Enviamos un código de 6 dígitos a ${maskPhone(parsed.data)}.` };
+  return {
+    ...extra,
+    step: "code",
+    phone: parsed.data,
+    info: `Enviamos un código de 6 dígitos por WhatsApp a ${maskPhone(parsed.data)}.`,
+  };
+}
+
+export async function requestPhoneCode(_prev: AuthFormState, fd: FormData): Promise<AuthFormState> {
+  return sendPhoneCode(field(fd, "phone"));
 }
 
 export async function verifyPhoneCode(_prev: AuthFormState, fd: FormData): Promise<AuthFormState> {
   const phone = field(fd, "phone");
+  const name = field(fd, "name") || undefined;
   const code = otpCodeSchema.safeParse(field(fd, "code"));
-  if (!code.success) return { step: "code", phone, error: code.error.issues[0].message };
+  if (!code.success) return { step: "code", phone, name, error: code.error.issues[0].message };
 
   return trySignIn(
     "phone-otp",
-    { phone, code: code.data, redirectTo: safeCallbackUrl(fd.get("callbackUrl")) },
-    { step: "code", phone, error: "Código incorrecto o vencido." },
+    { phone, code: code.data, name: name ?? "", redirectTo: safeCallbackUrl(fd.get("callbackUrl")) },
+    { step: "code", phone, name, error: "Código incorrecto o vencido." },
   );
+}
+
+/** Registro por celular: pide el nombre y envía el código. La cuenta se crea al verificarlo (verifyPhoneCode). */
+export async function requestRegisterCode(_prev: AuthFormState, fd: FormData): Promise<AuthFormState> {
+  const name = nameSchema.safeParse(field(fd, "name"));
+  if (!name.success) return { step: "phone", name: field(fd, "name"), error: name.error.issues[0].message };
+  return sendPhoneCode(field(fd, "phone"), { name: name.data });
 }
 
 export async function register(_prev: AuthFormState, fd: FormData): Promise<AuthFormState> {

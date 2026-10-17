@@ -11,19 +11,25 @@ interface Props {
   verifyAction: Action;
   callbackUrl?: string;
   submitLabel?: string;
+  /** Registro: pide el nombre junto al celular y lo envía con el código */
+  askName?: boolean;
 }
 
-/** Dos pasos: celular → código de 6 dígitos. Reutilizado en el login y en "vincular celular" de la cuenta. */
-export function PhoneOtpForm({ requestAction, verifyAction, callbackUrl, submitLabel = "Entrar" }: Props) {
+/** Dos pasos: celular → código de 6 dígitos. Reutilizado en el login, el registro y "vincular celular" de la cuenta. */
+export function PhoneOtpForm({ requestAction, verifyAction, callbackUrl, submitLabel = "Entrar", askName = false }: Props) {
   const [requested, request, requesting] = useActionState(requestAction, { step: "phone" });
   const [verified, verify, verifying] = useActionState(verifyAction, {});
 
   const phone = verified.phone ?? requested.phone;
+  const name = verified.name ?? requested.name;
   const onCodeStep = requested.step === "code" || verified.step === "code";
 
   if (!onCodeStep) {
     return (
       <form action={request} className="space-y-6">
+        {askName && (
+          <TextField label="Nombre" name="name" autoComplete="name" defaultValue={name} required maxLength={80} />
+        )}
         <TextField
           label="Celular"
           name="phone"
@@ -45,6 +51,7 @@ export function PhoneOtpForm({ requestAction, verifyAction, callbackUrl, submitL
   return (
     <form action={verify} className="space-y-6">
       <input type="hidden" name="phone" value={phone} />
+      {askName && <input type="hidden" name="name" value={name ?? ""} />}
       {callbackUrl && <input type="hidden" name="callbackUrl" value={callbackUrl} />}
       <TextField
         label="Código"
