@@ -108,6 +108,18 @@ model VerificationToken {
   @@index([identifier, createdAt])
 }
 
+/// Mensajes que la app publicada deja para el bot de WhatsApp Web (p. ej. códigos OTP).
+/// El bot los recoge en /api/whatsapp-web/outbox y se borran al entregarlos.
+model OutboundMessage {
+  id        String   @id @default(cuid())
+  /// Celular normalizado (solo dígitos)
+  to        String
+  text      String
+  /// Pasada esta hora ya no se envía (el código habrá vencido)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 model StaffMember {
   id        String   @id @default(cuid())
   tenantId  String

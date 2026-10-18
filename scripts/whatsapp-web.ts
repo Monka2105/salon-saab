@@ -15,6 +15,9 @@ const SEND_PORT = Number(process.env.WHATSAPP_WEB_PORT || 3010);
  */
 const BRIDGE_URL = process.env.WHATSAPP_BRIDGE_URL?.trim() || null;
 
+/** Cada cuánto el bot recoge los códigos OTP que deja la app publicada. */
+const OUTBOX_POLL_MS = Number(process.env.WHATSAPP_OUTBOX_POLL_MS || 5000);
+
 async function forwardToBridge(message: object): Promise<string[]> {
   const res = await fetch(BRIDGE_URL!, {
     method: "POST",
@@ -145,6 +148,7 @@ async function main() {
   }
 
   startSendServer(() => current);
+  if (BRIDGE_URL) startOutboxPolling(() => current);
   await connect();
 }
 
@@ -152,6 +156,36 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+/** Recoge de la app publicada los mensajes pendientes (códigos OTP) y los envía. */
+function startOutboxPolling(getSocket: () => { user?: unknown; sendMessage: (jid: string, content: { text: string }) => Promise<unknown> } | null) {
+  const url = `${BRIDGE_URL!.replace(/\/+$/, "")}/outbox`;
+  let busy = false;
+
+  setInterval(async () => {
+    const sock = getSocket();
+    // Sin conexión no se recoge nada: los mensajes esperan en la cola hasta que vencen.
+    if (busy || !sock?.user) return;
+    busy = true;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.WHATSAPP_BRIDGE_SECRET ?? ""}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      const { messages } = (await res.json()) as { messages: { to: string; text: string }[] };
+      for (const m of messages) {
+        await sock.sendMessage(`${m.to}@s.whatsapp.net`, { text: m.text });
+        console.log(`[whatsapp-web] Código enviado a ${m.to}`);
+      }
+    } catch (err) {
+      console.error("[whatsapp-web] no se pudo recoger la cola de envío", err);
+    } finally {
+      busy = false;
+    }
+  }, OUTBOX_POLL_MS);
+}
 
 /**
  * API local para que la web envíe OTPs desde este WhatsApp (OTP_CHANNEL=whatsapp-web).

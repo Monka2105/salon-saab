@@ -1,8 +1,8 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { renderAsText } from "@/modules/agent/reply";
 import { handleInboundMessage } from "@/modules/agent/router";
+import { bridgeAuthorized } from "@/modules/whatsapp/bridge-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +22,10 @@ const messageSchema = z.object({
   timestamp: z.coerce.date(),
 });
 
-const digest = (value: string) => createHash("sha256").update(value).digest();
-
 export async function POST(req: NextRequest) {
-  const secret = process.env.WHATSAPP_BRIDGE_SECRET;
-  if (!secret) return new NextResponse("Bridge disabled", { status: 404 });
-  if (!timingSafeEqual(digest(req.headers.get("authorization") ?? ""), digest(`Bearer ${secret}`))) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
+  const authorized = bridgeAuthorized(req.headers.get("authorization"));
+  if (authorized === null) return new NextResponse("Bridge disabled", { status: 404 });
+  if (!authorized) return new NextResponse("Unauthorized", { status: 401 });
 
   const parsed = messageSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return new NextResponse("Invalid payload", { status: 400 });
