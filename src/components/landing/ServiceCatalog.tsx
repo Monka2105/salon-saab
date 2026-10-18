@@ -9,22 +9,27 @@ export interface CatalogService {
   description: string | null;
   durationMinutes: number;
   price: string | null;
+  categoryId: string | null;
+}
+
+export interface CatalogCategory {
+  id: string;
+  name: string;
 }
 
 interface Props {
   services: CatalogService[];
-  /** Cada filtro muestra los servicios cuyo nombre contiene esa palabra. */
-  filters: string[];
+  /** Filtros, en el orden que definió el admin. Solo se muestran los que tienen servicios. */
+  categories: CatalogCategory[];
   title: string;
 }
 
 /** Catálogo del inicio: tarjetas con filtros. "Seleccionar fecha" abre la página del servicio (estilista + disponibilidad). */
-export function ServiceCatalog({ services, filters, title }: Props) {
+export function ServiceCatalog({ services, categories, title }: Props) {
   const [filter, setFilter] = useState<string | null>(null);
 
-  const matches = (s: CatalogService, f: string) => s.title.toLowerCase().includes(f.toLowerCase());
-  const activeFilters = filters.filter((f) => services.some((s) => matches(s, f)));
-  const visible = filter ? services.filter((s) => matches(s, filter)) : services;
+  const activeFilters = categories.filter((c) => services.some((s) => s.categoryId === c.id));
+  const visible = filter ? services.filter((s) => s.categoryId === filter) : services;
 
   return (
     <section id="servicios" className="scroll-mt-8">
@@ -33,16 +38,16 @@ export function ServiceCatalog({ services, filters, title }: Props) {
         <p className="mt-2 text-[14px] text-ash">Descubre</p>
         {activeFilters.length > 0 && (
           <div className="micro-label mt-5 flex flex-wrap justify-center gap-x-2 gap-y-2">
-            {[null, ...activeFilters].map((f, i) => (
-              <span key={f ?? "all"} className="flex items-center gap-2">
+            {[{ id: null, name: "Todos" }, ...activeFilters].map((f, i) => (
+              <span key={f.id ?? "all"} className="flex items-center gap-2">
                 {i > 0 && <span className="text-ash">/</span>}
                 <button
                   type="button"
-                  onClick={() => setFilter(f)}
-                  aria-pressed={filter === f}
-                  className={`cursor-pointer border-b pb-0.5 transition-colors ${filter === f ? "border-carbon text-carbon" : "border-transparent text-ink hover:text-carbon"}`}
+                  onClick={() => setFilter(f.id)}
+                  aria-pressed={filter === f.id}
+                  className={`cursor-pointer border-b pb-0.5 transition-colors ${filter === f.id ? "border-carbon text-carbon" : "border-transparent text-ink hover:text-carbon"}`}
                 >
-                  {f ?? "Todos"}
+                  {f.name}
                 </button>
               </span>
             ))}

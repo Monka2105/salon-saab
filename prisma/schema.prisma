@@ -2,7 +2,7 @@
 // y bitácora estética por cita. PostgreSQL (necesario para String[] y enums nativos).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // rhel-openssl-3.0.x: runtime de las funciones serverless de Netlify/AWS Lambda
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
@@ -64,9 +64,10 @@ model Tenant {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  services     Service[]
-  staffMembers StaffMember[]
-  appointments Appointment[]
+  services          Service[]
+  serviceCategories ServiceCategory[]
+  staffMembers      StaffMember[]
+  appointments      Appointment[]
 }
 
 /// Cliente o administrador. Se puede autenticar por email+contraseña y/o por celular (OTP).
@@ -158,9 +159,26 @@ model TimeOff {
   @@index([staffMemberId, startTime])
 }
 
+/// Agrupa el catálogo (Corte, Barba, Cejas, Uñas…). La gestiona el admin.
+model ServiceCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services Service[]
+
+  @@unique([tenantId, name])
+}
+
 model Service {
   id              String   @id @default(cuid())
   tenantId        String
+  /// null = sin categoría (se muestra al final del catálogo)
+  categoryId      String?
   title           String
   description     String?
   /// Unidades mínimas de la moneda (p. ej. centavos)
@@ -172,10 +190,12 @@ model Service {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments Appointment[]
 
   @@index([tenantId, active])
+  @@index([categoryId])
 }
 
 model Appointment {

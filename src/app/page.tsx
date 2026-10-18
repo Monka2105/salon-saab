@@ -10,12 +10,19 @@ import { getCurrentTenant } from "@/lib/tenant";
  */
 export default async function HomePage() {
   const tenant = await getCurrentTenant();
-  const { business, terminology: terms, landing } = tenant;
+  const { business, terminology: terms } = tenant;
 
-  const services = await prisma.service.findMany({
-    where: { tenantId: tenant.id, active: true },
-    orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
-  });
+  const [services, categories] = await Promise.all([
+    prisma.service.findMany({
+      where: { tenantId: tenant.id, active: true },
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+    }),
+    prisma.serviceCategory.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true },
+    }),
+  ]);
   const whatsappUrl = business.phone ? `https://wa.me/${business.phone}` : null;
 
   const whatsappBand = whatsappUrl && (
@@ -43,8 +50,9 @@ export default async function HomePage() {
           description: s.description,
           durationMinutes: s.durationMinutes,
           price: formatPrice(s.price, business),
+          categoryId: s.categoryId,
         }))}
-        filters={landing.serviceFilters}
+        categories={categories}
         title={`Nuestros ${terms.item.plural}`}
       />
     </PublicShell>

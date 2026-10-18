@@ -8,7 +8,7 @@ import { signOut } from "@/auth";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { shiftDay, timeToMinutes, toMinorUnits, WEEKDAYS, zonedLocalToUtc } from "@/lib/format";
-import { getCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant, type ResolvedTenant } from "@/lib/tenant";
 import { completeAppointment, markNoShow, transitionAppointment } from "@/modules/appointments/service";
 import { BLOCKING_STATUSES } from "@/modules/appointments/status";
 import { type ChangeRoleError, changeUserRole, releaseStaffAccount, setStaffAccount, type StaffAccountError } from "@/modules/staff/account";
@@ -66,15 +66,23 @@ const serviceSchema = z.object({
   description: z.string().trim().max(1000).nullable(),
   price: z.number().int().nonnegative(),
   durationMinutes: z.number().int().min(5).max(600),
+  categoryId: idSchema.nullable(),
 });
 
-function parseService(formData: FormData, business: Parameters<typeof toMinorUnits>[1]) {
-  return serviceSchema.safeParse({
+async function parseService(formData: FormData, tenant: ResolvedTenant) {
+  const parsed = serviceSchema.safeParse({
     title: text(formData, "title"),
     description: nullable(formData, "description"),
-    price: toMinorUnits(text(formData, "price"), business),
+    price: toMinorUnits(text(formData, "price"), tenant.business),
     durationMinutes: Number(text(formData, "durationMinutes")),
+    categoryId: nullable(formData, "categoryId"),
   });
+  // La categoría debe ser de este salón; si ya no existe, el servicio queda sin categoría.
+  if (parsed.success && parsed.data.categoryId) {
+    const exists = await prisma.serviceCategory.count({ where: { id: parsed.data.categoryId, tenantId: tenant.id } });
+    if (!exists) parsed.data.categoryId = null;
+  }
+  return parsed;
 }
 
 /** El catálogo público, las páginas de reserva y el agente leen servicios: se revalidan junto con el admin. */
@@ -88,7 +96,7 @@ function revalidateServices() {
 export async function createService(formData: FormData) {
   await requireAdmin();
   const tenant = await getCurrentTenant();
-  const parsed = parseService(formData, tenant.business);
+  const parsed = await parseService(formData, tenant);
   if (!parsed.success) return;
 
   // Sin campo "Orden" en el admin: un servicio nuevo va al final del catálogo; al editar se conserva su posición.
@@ -101,7 +109,7 @@ export async function updateService(formData: FormData) {
   await requireAdmin();
   const tenant = await getCurrentTenant();
   const id = idSchema.safeParse(text(formData, "id"));
-  const parsed = parseService(formData, tenant.business);
+  const parsed = await parseService(formData, tenant);
   if (!id.success || !parsed.success) return;
 
   // La duración nueva aplica a las citas futuras; las ya agendadas conservan su endTime.
@@ -123,6 +131,84 @@ export async function deleteService(formData: FormData) {
   const hasAppointments = (await prisma.appointment.count({ where: { serviceId: id.data, tenantId: tenant.id } })) > 0;
   if (hasAppointments) await prisma.service.updateMany({ where, data: { active: false } });
   else await prisma.service.deleteMany({ where });
+  revalidateServices();
+}
+
+// ── Categorías de servicios ───────────────────────────────────
+
+const categoryNameSchema = z.string().trim().min(2, "El nombre es muy corto.").max(40, "Máximo 40 caracteres.");
+
+export interface CategoryFormState {
+  error?: string;
+}
+
+async function categoryNameTaken(tenantId: string, name: string, exceptId?: string) {
+  const count = await prisma.serviceCategory.count({
+    where: { tenantId, name: { equals: name, mode: "insensitive" }, ...(exceptId && { id: { not: exceptId } }) },
+  });
+  return count > 0;
+}
+
+export async function createCategory(_prev: CategoryFormState, formData: FormData): Promise<CategoryFormState> {
+  await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const name = categoryNameSchema.safeParse(text(formData, "name"));
+  if (!name.success) return { error: name.error.issues[0].message };
+  if (await categoryNameTaken(tenant.id, name.data)) return { error: `Ya existe la categoría «${name.data}».` };
+
+  const last = await prisma.serviceCategory.aggregate({ where: { tenantId: tenant.id }, _max: { sortOrder: true } });
+  await prisma.serviceCategory.create({ data: { tenantId: tenant.id, name: name.data, sortOrder: (last._max.sortOrder ?? 0) + 1 } });
+  revalidateServices();
+  return {};
+}
+
+export async function renameCategory(formData: FormData): Promise<CategoryFormState> {
+  await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const id = idSchema.safeParse(text(formData, "id"));
+  const name = categoryNameSchema.safeParse(text(formData, "name"));
+  if (!id.success) return { error: "Categoría inválida." };
+  if (!name.success) return { error: name.error.issues[0].message };
+  if (await categoryNameTaken(tenant.id, name.data, id.data)) return { error: `Ya existe la categoría «${name.data}».` };
+
+  await prisma.serviceCategory.updateMany({ where: { id: id.data, tenantId: tenant.id }, data: { name: name.data } });
+  revalidateServices();
+  return {};
+}
+
+/** Intercambia la posición con la categoría vecina (arriba o abajo). */
+export async function moveCategory(formData: FormData) {
+  await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const id = idSchema.safeParse(text(formData, "id"));
+  const direction = text(formData, "direction");
+  if (!id.success || (direction !== "up" && direction !== "down")) return;
+
+  const categories = await prisma.serviceCategory.findMany({
+    where: { tenantId: tenant.id },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true },
+  });
+  const from = categories.findIndex((c) => c.id === id.data);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from < 0 || to < 0 || to >= categories.length) return;
+
+  [categories[from], categories[to]] = [categories[to], categories[from]];
+  // Se renumera todo: así se corrigen también empates de sortOrder.
+  await prisma.$transaction(
+    categories.map((c, i) => prisma.serviceCategory.update({ where: { id: c.id }, data: { sortOrder: i + 1 } })),
+  );
+  revalidateServices();
+}
+
+/** Sus servicios no se borran: quedan "Sin categoría" (onDelete: SetNull). */
+export async function deleteCategory(formData: FormData) {
+  await requireAdmin();
+  const tenant = await getCurrentTenant();
+  const id = idSchema.safeParse(text(formData, "id"));
+  if (!id.success) return;
+
+  await prisma.serviceCategory.deleteMany({ where: { id: id.data, tenantId: tenant.id } });
   revalidateServices();
 }
 

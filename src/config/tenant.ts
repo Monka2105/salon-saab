@@ -58,8 +58,6 @@ export interface TenantConfig {
   landing: {
     /** Barra superior de aviso (vacío = sin barra). */
     announcement: string;
-    /** Filtros del catálogo del inicio: cada uno muestra los servicios cuyo nombre contiene esa palabra. */
-    serviceFilters: string[];
   };
   records: {
     maxDaysAhead: number;
@@ -100,7 +98,6 @@ export const tenantConfig: TenantConfig = {
 
   landing: {
     announcement: "Reserva en línea o por WhatsApp, a cualquier hora.",
-    serviceFilters: ["Corte", "Barba", "Cejas"],
   },
 
   theme: {

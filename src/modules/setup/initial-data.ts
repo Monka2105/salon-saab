@@ -5,14 +5,17 @@ import bcrypt from "bcryptjs";
 // para entornos donde no se puede correr el seed contra la base (p. ej. Netlify Database,
 // cuyo usuario de la CLI es de solo lectura).
 
+const DEFAULT_CATEGORIES = ["Corte", "Barba", "Cejas"];
+
+/** `category` es el nombre de una de DEFAULT_CATEGORIES. */
 const DEFAULT_SERVICES = [
-  { title: "Arreglo de barba", description: "Arreglo de barba a tu gusto 💎 Precio desde $6.000.", price: 6000, durationMinutes: 25, sortOrder: 1 },
-  { title: "Corte desvanecidos o modernos", description: "Corte con desvanecidos o modernos + diseño.", price: 20000, durationMinutes: 40, sortOrder: 2 },
-  { title: "Corte + barba + cejas", description: "Corte de cabello con arreglo de barba más cejas. Precio desde $27.000.", price: 27000, durationMinutes: 60, sortOrder: 3 },
-  { title: "Arreglo de cejas", description: "Arreglo de cejas.", price: 3000, durationMinutes: 5, sortOrder: 4 },
-  { title: "Corte de pelo + arreglo de barba", description: "Corte de cabello y arreglo de barba. Precio desde $25.000.", price: 25000, durationMinutes: 60, sortOrder: 5 },
-  { title: "Corte + cejas", description: "Corte de cabello más arreglo de cejas.", price: 22000, durationMinutes: 40, sortOrder: 6 },
-  { title: "Corte hombre + mascarilla", description: "Corte de cabello más aplicación de mascarilla.", price: 22000, durationMinutes: 40, sortOrder: 7 },
+  { title: "Arreglo de barba", description: "Arreglo de barba a tu gusto 💎 Precio desde $6.000.", price: 6000, durationMinutes: 25, sortOrder: 1, category: "Barba" },
+  { title: "Corte desvanecidos o modernos", description: "Corte con desvanecidos o modernos + diseño.", price: 20000, durationMinutes: 40, sortOrder: 2, category: "Corte" },
+  { title: "Corte + barba + cejas", description: "Corte de cabello con arreglo de barba más cejas. Precio desde $27.000.", price: 27000, durationMinutes: 60, sortOrder: 3, category: "Corte" },
+  { title: "Arreglo de cejas", description: "Arreglo de cejas.", price: 3000, durationMinutes: 5, sortOrder: 4, category: "Cejas" },
+  { title: "Corte de pelo + arreglo de barba", description: "Corte de cabello y arreglo de barba. Precio desde $25.000.", price: 25000, durationMinutes: 60, sortOrder: 5, category: "Corte" },
+  { title: "Corte + cejas", description: "Corte de cabello más arreglo de cejas.", price: 22000, durationMinutes: 40, sortOrder: 6, category: "Corte" },
+  { title: "Corte hombre + mascarilla", description: "Corte de cabello más aplicación de mascarilla.", price: 22000, durationMinutes: 40, sortOrder: 7, category: "Corte" },
 ];
 
 const DEFAULT_STAFF = [
@@ -49,8 +52,19 @@ export async function ensureInitialData(prisma: PrismaClient, tenantId: string, 
   }
 
   if ((await prisma.service.count({ where: { tenantId } })) === 0) {
-    await prisma.service.createMany({ data: DEFAULT_SERVICES.map((s) => ({ ...s, tenantId })) });
-    log("Servicios creados.");
+    await prisma.serviceCategory.createMany({
+      data: DEFAULT_CATEGORIES.map((name, i) => ({ tenantId, name, sortOrder: i + 1 })),
+      skipDuplicates: true,
+    });
+    const categories = await prisma.serviceCategory.findMany({ where: { tenantId }, select: { id: true, name: true } });
+    await prisma.service.createMany({
+      data: DEFAULT_SERVICES.map(({ category, ...s }) => ({
+        ...s,
+        tenantId,
+        categoryId: categories.find((c) => c.name === category)?.id ?? null,
+      })),
+    });
+    log("Categorías y servicios creados.");
   }
 
   if ((await prisma.staffMember.count({ where: { tenantId } })) === 0) {

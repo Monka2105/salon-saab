@@ -5,9 +5,22 @@ export interface ServiceDefaults {
   price: string;
   description: string;
   durationMinutes: number;
+  /** "" = sin categoría */
+  categoryId: string;
 }
 
-export function ServiceFields({ currency, defaults }: { currency: string; defaults?: ServiceDefaults }) {
+export interface CategoryOption {
+  id: string;
+  name: string;
+}
+
+interface Props {
+  currency: string;
+  categories: CategoryOption[];
+  defaults?: ServiceDefaults;
+}
+
+export function ServiceFields({ currency, categories, defaults }: Props) {
   return (
     <>
       <input name="title" required maxLength={120} placeholder="Título" defaultValue={defaults?.title} className="input" />
@@ -21,8 +34,16 @@ export function ServiceFields({ currency, defaults }: { currency: string; defaul
         max={600}
         placeholder="Duración (min)"
         defaultValue={defaults?.durationMinutes}
-        className="input sm:col-span-2"
+        className="input"
       />
+      <select name="categoryId" aria-label="Categoría" defaultValue={defaults?.categoryId ?? ""} className="input">
+        <option value="">Sin categoría</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
     </>
   );
 }
