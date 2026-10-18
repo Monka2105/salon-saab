@@ -13,11 +13,15 @@ export function renderTemplate(template: string, vars: Record<string, unknown>):
   });
 }
 
-function describeCatalog(services: Service[], tenant: ResolvedTenant): string {
+/** `staffMembers`: estilistas obligatorios del servicio (vacío = cualquiera). */
+type CatalogService = Service & { staffMembers?: Pick<StaffMember, "name">[] };
+
+function describeCatalog(services: CatalogService[], tenant: ResolvedTenant): string {
   if (!services.length) return "(catálogo vacío)";
   return services
     .map((s) => {
-      const details = [formatPrice(s.price, tenant.business), `${s.durationMinutes} min`].filter(Boolean).join(" · ");
+      const only = s.staffMembers?.length ? `solo lo hace ${s.staffMembers.map((m) => m.name).join(" o ")}` : null;
+      const details = [formatPrice(s.price, tenant.business), `${s.durationMinutes} min`, only].filter(Boolean).join(" · ");
       return `- [${s.id}] ${s.title} — ${details}${s.description ? `\n  ${s.description}` : ""}`;
     })
     .join("\n");
@@ -80,7 +84,7 @@ function channelRules(newConversation: boolean): string {
 
 export function buildSystemPrompt(params: {
   tenant: ResolvedTenant;
-  services: Service[];
+  services: CatalogService[];
   staff: StaffMember[];
   customer: User;
   newConversation: boolean;

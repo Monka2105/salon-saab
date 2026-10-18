@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { todayIn } from "@/lib/format";
 import type { ResolvedTenant } from "@/lib/tenant";
-import { findAvailableSlots } from "./scheduling";
+import { findAvailableSlots, serviceStaffIds } from "./scheduling";
 import { BLOCKING_STATUSES, CUSTOMER_CANCELLABLE, MANUAL_TRANSITIONS } from "./status";
 
 // Lógica de dominio compartida por la web, el admin y el agente de WhatsApp.
@@ -11,6 +11,8 @@ import { BLOCKING_STATUSES, CUSTOMER_CANCELLABLE, MANUAL_TRANSITIONS } from "./s
 export type AppointmentErrorCode =
   | "SERVICE_NOT_FOUND"
   | "STAFF_NOT_FOUND"
+  /** El servicio solo lo hacen ciertos estilistas y se pidió otro */
+  | "STAFF_NOT_ALLOWED"
   | "OUT_OF_RANGE"
   | "SLOT_TAKEN"
   | "INVALID_TRANSITION"
@@ -53,6 +55,8 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
         if (input.staffMemberId) {
           const staff = await tx.staffMember.findFirst({ where: { id: input.staffMemberId, tenantId: tenant.id, active: true } });
           if (!staff) throw new AppointmentError("STAFF_NOT_FOUND");
+          const required = await serviceStaffIds(tx, service.id);
+          if (required.length && !required.includes(staff.id)) throw new AppointmentError("STAFF_NOT_ALLOWED");
         }
 
         // Solo se acepta un inicio que el motor ofrecería: misma regla para web, admin y WhatsApp.
@@ -61,6 +65,7 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
           day: todayIn(tenant.business.timezone, start),
           durationMinutes: service.durationMinutes,
           staffMemberId: input.staffMemberId,
+          serviceId: service.id,
           now,
         });
         const slot = slots.find((s) => s.start.getTime() === start.getTime());

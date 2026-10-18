@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { deleteService, updateService } from "@/app/admin/actions";
 import { ConfirmDelete } from "./ConfirmDelete";
-import { type CategoryOption, ServiceFields, type ServiceDefaults } from "./ServiceFields";
+import { type CategoryOption, ServiceFields, type ServiceDefaults, type StaffOption } from "./ServiceFields";
 
 export interface ServiceItem {
   id: string;
-  /** "60 min · US$65.00" */
+  /** "60 min · US$65.00 · Solo: Mateo" */
   summary: string;
   defaults: ServiceDefaults;
 }
@@ -24,11 +24,12 @@ export interface ServiceGroup {
 interface ListProps {
   groups: ServiceGroup[];
   categories: CategoryOption[];
+  staff: StaffOption[];
   currency: string;
 }
 
 /** Catálogo agrupado por categoría. */
-export function ServiceList({ groups, categories, currency }: ListProps) {
+export function ServiceList({ groups, categories, staff, currency }: ListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return groups.map((g) => (
@@ -43,6 +44,7 @@ export function ServiceList({ groups, categories, currency }: ListProps) {
             service={s}
             currency={currency}
             categories={categories}
+            staff={staff}
             editing={editingId === s.id}
             onEdit={() => setEditingId(s.id)}
             onClose={() => setEditingId(null)}
@@ -58,13 +60,14 @@ interface RowProps {
   service: ServiceItem;
   currency: string;
   categories: CategoryOption[];
+  staff: StaffOption[];
   editing: boolean;
   onEdit: () => void;
   onClose: () => void;
 }
 
 /** Fila que se edita sin navegar, así la página no salta al inicio. */
-function ServiceRow({ service: { id, summary, defaults }, currency, categories, editing, onEdit, onClose }: RowProps) {
+function ServiceRow({ service: { id, summary, defaults }, currency, categories, staff, editing, onEdit, onClose }: RowProps) {
   if (editing) {
     return (
       <li className="border-t border-stone py-6">
@@ -76,7 +79,7 @@ function ServiceRow({ service: { id, summary, defaults }, currency, categories, 
           className="grid gap-5 bg-white p-6 sm:grid-cols-2 sm:p-8"
         >
           <input type="hidden" name="id" value={id} />
-          <ServiceFields currency={currency} categories={categories} defaults={defaults} />
+          <ServiceFields currency={currency} categories={categories} staff={staff} defaults={defaults} />
           <div className="flex gap-6 sm:col-span-2">
             <SaveButton />
             <button type="button" onClick={onClose} className="btn-secondary">

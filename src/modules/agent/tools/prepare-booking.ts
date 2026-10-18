@@ -50,6 +50,7 @@ export const prepareBooking: AgentTool<PrepareBookingArgs> = {
       day: args.startTime.slice(0, 10),
       durationMinutes: service.durationMinutes,
       staffMemberId: args.staffId ?? null,
+      serviceId: service.id,
     });
     const slot = slots.find((s) => s.start.getTime() === start.getTime());
     if (!slot) return { ok: false, error: "SLOT_TAKEN" };

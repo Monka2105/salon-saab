@@ -67,6 +67,7 @@ const serviceSchema = z.object({
   price: z.number().int().nonnegative(),
   durationMinutes: z.number().int().min(5).max(600),
   categoryId: idSchema.nullable(),
+  staffIds: z.array(idSchema).max(50),
 });
 
 async function parseService(formData: FormData, tenant: ResolvedTenant) {
@@ -76,11 +77,20 @@ async function parseService(formData: FormData, tenant: ResolvedTenant) {
     price: toMinorUnits(text(formData, "price"), tenant.business),
     durationMinutes: Number(text(formData, "durationMinutes")),
     categoryId: nullable(formData, "categoryId"),
+    staffIds: [...new Set(formData.getAll("staffIds").map(String))],
   });
   // La categoría debe ser de este salón; si ya no existe, el servicio queda sin categoría.
   if (parsed.success && parsed.data.categoryId) {
     const exists = await prisma.serviceCategory.count({ where: { id: parsed.data.categoryId, tenantId: tenant.id } });
     if (!exists) parsed.data.categoryId = null;
+  }
+  // Solo estilistas activos de este salón.
+  if (parsed.success && parsed.data.staffIds.length) {
+    const staff = await prisma.staffMember.findMany({
+      where: { id: { in: parsed.data.staffIds }, tenantId: tenant.id, active: true },
+      select: { id: true },
+    });
+    parsed.data.staffIds = staff.map((s) => s.id);
   }
   return parsed;
 }
@@ -100,8 +110,16 @@ export async function createService(formData: FormData) {
   if (!parsed.success) return;
 
   // Sin campo "Orden" en el admin: un servicio nuevo va al final del catálogo; al editar se conserva su posición.
+  const { staffIds, ...data } = parsed.data;
   const last = await prisma.service.aggregate({ where: { tenantId: tenant.id }, _max: { sortOrder: true } });
-  await prisma.service.create({ data: { tenantId: tenant.id, ...parsed.data, sortOrder: (last._max.sortOrder ?? 0) + 1 } });
+  await prisma.service.create({
+    data: {
+      tenantId: tenant.id,
+      ...data,
+      sortOrder: (last._max.sortOrder ?? 0) + 1,
+      staffMembers: { connect: staffIds.map((id) => ({ id })) },
+    },
+  });
   revalidateServices();
 }
 
@@ -113,7 +131,12 @@ export async function updateService(formData: FormData) {
   if (!id.success || !parsed.success) return;
 
   // La duración nueva aplica a las citas futuras; las ya agendadas conservan su endTime.
-  await prisma.service.updateMany({ where: { id: id.data, tenantId: tenant.id, active: true }, data: parsed.data });
+  // Lo mismo con los estilistas: restringir el servicio no reasigna citas ya agendadas.
+  const { staffIds, ...data } = parsed.data;
+  const { count } = await prisma.service.updateMany({ where: { id: id.data, tenantId: tenant.id, active: true }, data });
+  if (count === 1) {
+    await prisma.service.update({ where: { id: id.data }, data: { staffMembers: { set: staffIds.map((id) => ({ id })) } } });
+  }
   revalidateServices();
 }
 

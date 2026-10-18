@@ -7,6 +7,8 @@ export interface ServiceDefaults {
   durationMinutes: number;
   /** "" = sin categoría */
   categoryId: string;
+  /** Estilistas que pueden hacerlo; vacío = cualquiera */
+  staffIds: string[];
 }
 
 export interface CategoryOption {
@@ -14,13 +16,19 @@ export interface CategoryOption {
   name: string;
 }
 
+export interface StaffOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   currency: string;
   categories: CategoryOption[];
+  staff: StaffOption[];
   defaults?: ServiceDefaults;
 }
 
-export function ServiceFields({ currency, categories, defaults }: Props) {
+export function ServiceFields({ currency, categories, staff, defaults }: Props) {
   return (
     <>
       <input name="title" required maxLength={120} placeholder="Título" defaultValue={defaults?.title} className="input" />
@@ -44,6 +52,22 @@ export function ServiceFields({ currency, categories, defaults }: Props) {
           </option>
         ))}
       </select>
+      {staff.length > 0 && (
+        <fieldset className="sm:col-span-2">
+          <legend className="micro-label">¿Quién lo puede hacer?</legend>
+          <p className="mt-1 text-[13px] text-ash">
+            Sin marcar = cualquiera. Si marcas a alguien, el cliente solo podrá reservarlo con esa persona.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+            {staff.map((m) => (
+              <label key={m.id} className="flex cursor-pointer items-center gap-2 text-[15px]">
+                <input type="checkbox" name="staffIds" value={m.id} defaultChecked={defaults?.staffIds.includes(m.id)} className="h-4 w-4 accent-carbon" />
+                {m.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
     </>
   );
 }

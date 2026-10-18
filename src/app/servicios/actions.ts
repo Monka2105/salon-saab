@@ -35,6 +35,7 @@ async function slotsFor(tenant: ResolvedTenant, serviceId: string, staffMemberId
     day,
     durationMinutes: service.durationMinutes,
     staffMemberId: staffMemberId === "any" ? null : staffMemberId,
+    serviceId: service.id,
   });
   const time = new Intl.DateTimeFormat("en-GB", { timeZone: tenant.business.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   return slots.map((s) => time.format(s.start));
@@ -79,6 +80,7 @@ const bookingSchema = z.object({
 const ERROR_MESSAGES: Partial<Record<AppointmentErrorCode, string>> = {
   SERVICE_NOT_FOUND: "El servicio seleccionado ya no está disponible.",
   STAFF_NOT_FOUND: "Ese estilista ya no está disponible.",
+  STAFF_NOT_ALLOWED: "Este servicio lo realiza otro estilista. Elige uno de los disponibles.",
   OUT_OF_RANGE: "Elige una fecha futura dentro del rango permitido.",
   SLOT_TAKEN: "Ese horario ya no está disponible. Prueba con otro.",
 };

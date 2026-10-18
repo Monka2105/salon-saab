@@ -6,6 +6,7 @@ import { ServiceBooking } from "@/components/landing/ServiceBooking";
 import { PublicShell } from "@/components/PublicShell";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { serviceStaffIds } from "@/modules/appointments/scheduling";
 import { formatPrice, shiftDay, todayIn } from "@/lib/format";
 import { getCurrentTenant } from "@/lib/tenant";
 
@@ -33,17 +34,20 @@ export default async function ServicePage({ params, searchParams }: { params: Pa
   if (!service) notFound();
 
   const { business, terminology: terms, records } = tenant;
+  // Si el admin asignó estilistas al servicio, solo ellos se pueden elegir.
+  const required = await serviceStaffIds(prisma, service.id);
   const staff = await prisma.staffMember.findMany({
-    where: { tenantId: tenant.id, active: true },
+    where: { tenantId: tenant.id, active: true, ...(required.length && { id: { in: required } }) },
     orderBy: { name: "asc" },
     select: { id: true, name: true, specialty: true, photoUrl: true },
   });
+  const staffRequired = required.length > 0;
 
   const today = todayIn(business.timezone);
   const days = Array.from({ length: Math.min(DAYS_SHOWN, records.maxDaysAhead + 1) }, (_, i) => shiftDay(today, i));
 
   // Selección de la URL (al volver del login) o, por defecto, el primer día con horarios libres.
-  const staffId = staff.some((s) => s.id === query.staff) ? query.staff! : "any";
+  const staffId = staff.some((s) => s.id === query.staff) ? query.staff! : staffRequired && staff.length === 1 ? staff[0].id : "any";
   const requestedDay = query.day && days.includes(query.day) ? query.day : null;
   let day = requestedDay ?? today;
   let initialSlots: string[];
@@ -82,6 +86,7 @@ export default async function ServicePage({ params, searchParams }: { params: Pa
           signedIn={Boolean(user)}
           path={`/servicios/${service.id}`}
           staffLabel={terms.staff.singular}
+          staffRequired={staffRequired}
         />
       </div>
     </PublicShell>

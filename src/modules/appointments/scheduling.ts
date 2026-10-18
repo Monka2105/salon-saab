@@ -90,7 +90,15 @@ export interface FindSlotsParams {
   durationMinutes: number;
   /** null = "Cualquiera": unión de los horarios de todos los estilistas. */
   staffMemberId: string | null;
+  /** Si el servicio tiene estilistas asignados, solo ellos se ofrecen (y pedir otro no da horarios). */
+  serviceId?: string;
   now?: Date;
+}
+
+/** Estilistas obligatorios del servicio; vacío = lo puede hacer cualquiera. */
+export async function serviceStaffIds(db: Db, serviceId: string): Promise<string[]> {
+  const rows = await db.staffMember.findMany({ where: { services: { some: { id: serviceId } } }, select: { id: true } });
+  return rows.map((r) => r.id);
 }
 
 export async function findAvailableSlots(db: Db, params: FindSlotsParams): Promise<DaySlot[]> {
@@ -115,8 +123,15 @@ export async function findAvailableSlots(db: Db, params: FindSlotsParams): Promi
   const overlapsDay = { startTime: { lt: dayEnd }, endTime: { gt: dayStart } };
   const limits = { notBefore: now.getTime(), notAfter: now.getTime() + tenant.records.maxDaysAhead * 86_400_000 };
 
+  const required = params.serviceId ? await serviceStaffIds(db, params.serviceId) : [];
+  if (staffMemberId && required.length && !required.includes(staffMemberId)) return [];
+
   const staff = await db.staffMember.findMany({
-    where: { tenantId: tenant.id, active: true, ...(staffMemberId && { id: staffMemberId }) },
+    where: {
+      tenantId: tenant.id,
+      active: true,
+      ...(staffMemberId ? { id: staffMemberId } : required.length && { id: { in: required } }),
+    },
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -137,8 +152,8 @@ export async function findAvailableSlots(db: Db, params: FindSlotsParams): Promi
   const asInterval = (r: { startTime: Date; endTime: Date }): Interval => ({ start: r.startTime.getTime(), end: r.endTime.getTime() });
 
   if (!staff.length) {
-    // Estilista pedido inexistente → sin horarios. Negocio sin estilistas → el salón es un único recurso.
-    if (staffMemberId) return [];
+    // Estilista pedido (u obligatorio) inexistente o inactivo → sin horarios. Negocio sin estilistas → el salón es un único recurso.
+    if (staffMemberId || required.length) return [];
     return computeSlots({ windows: openingWindows, busy: appointments.map(asInterval), durationMinutes, ...limits }).map((t) => ({
       start: new Date(t),
       end: new Date(t + durationMinutes * MINUTE),

@@ -49,7 +49,7 @@ export const checkAvailability: AgentTool<CheckAvailabilityArgs> = {
     let date = days[0];
     let slots: Awaited<ReturnType<typeof findAvailableSlots>> = [];
     for (date of days) {
-      slots = await findAvailableSlots(prisma, { tenant, day: date, durationMinutes: service.durationMinutes, staffMemberId: args.staffId ?? null });
+      slots = await findAvailableSlots(prisma, { tenant, day: date, durationMinutes: service.durationMinutes, staffMemberId: args.staffId ?? null, serviceId: service.id });
       if (slots.length) break;
     }
 

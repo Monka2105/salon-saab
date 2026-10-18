@@ -25,6 +25,8 @@ interface Props {
   /** Ruta de esta página, para volver tras iniciar sesión con la selección intacta. */
   path: string;
   staffLabel: string;
+  /** true = el servicio solo lo hacen los estilistas de `staff` (asignados por el admin). */
+  staffRequired: boolean;
 }
 
 const INITIAL_STATE: BookingFormState = { status: "idle" };
@@ -61,7 +63,9 @@ function shortName(name: string): string {
  * Reserva completa de un servicio: estilista → fecha → horario → notas → confirmar.
  * Los horarios son los Smart Slots reales; createAppointment los revalida al confirmar.
  */
-export function ServiceBooking({ serviceId, staff, locale, days, defaults, initialSlots, signedIn, path, staffLabel }: Props) {
+export function ServiceBooking({ serviceId, staff, locale, days, defaults, initialSlots, signedIn, path, staffLabel, staffRequired }: Props) {
+  // Un único estilista obligatorio: queda elegido y no se ofrece "Cualquiera".
+  const onlyOne = staffRequired && staff.length === 1;
   const [state, action, pending] = useActionState(submitBooking, INITIAL_STATE);
   const [staffId, setStaffId] = useState(defaults.staffId);
   const [day, setDay] = useState(defaults.day);
@@ -125,7 +129,13 @@ export function ServiceBooking({ serviceId, staff, locale, days, defaults, initi
       {staff.length > 0 && (
         <section>
           <h2 className="font-serif text-[24px] leading-[1.1] uppercase">Tu {staffLabel}</h2>
-          <p className="mt-1 text-[14px]">Elige quién te atenderá</p>
+          <p className="mt-1 text-[14px]">
+            {onlyOne
+              ? `Este servicio solo lo realiza ${staff[0].name}.`
+              : staffRequired
+                ? `Este servicio solo lo realizan: ${staff.map((m) => m.name).join(", ")}. Elige quién te atenderá.`
+                : "Elige quién te atenderá"}
+          </p>
 
           <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
             {staff.map((m) => (
@@ -137,14 +147,16 @@ export function ServiceBooking({ serviceId, staff, locale, days, defaults, initi
                 )}
               </StaffCard>
             ))}
-            <StaffCard selected={staffId === "any"} onSelect={() => setStaffId("any")} title="Cualquiera disponible" subtitle="Primer turno libre">
-              <span className="flex aspect-[16/10] w-full items-center justify-center">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-                  <rect x="3" y="3" width="12" height="12" />
-                  <rect x="9" y="9" width="12" height="12" className="fill-cream" />
-                </svg>
-              </span>
-            </StaffCard>
+            {!onlyOne && (
+              <StaffCard selected={staffId === "any"} onSelect={() => setStaffId("any")} title="Cualquiera disponible" subtitle="Primer turno libre">
+                <span className="flex aspect-[16/10] w-full items-center justify-center">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                    <rect x="3" y="3" width="12" height="12" />
+                    <rect x="9" y="9" width="12" height="12" className="fill-cream" />
+                  </svg>
+                </span>
+              </StaffCard>
+            )}
           </div>
         </section>
       )}

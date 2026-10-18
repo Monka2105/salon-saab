@@ -23,7 +23,11 @@ export interface RunAgentParams {
  */
 export async function runAgent({ tenant, customer, history, newConversation }: RunAgentParams): Promise<AgentReply> {
   const [services, staff] = await Promise.all([
-    prisma.service.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
+    prisma.service.findMany({
+      where: { tenantId: tenant.id, active: true },
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+      include: { staffMembers: { where: { active: true }, select: { name: true } } },
+    }),
     prisma.staffMember.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: { name: "asc" } }),
   ]);
 

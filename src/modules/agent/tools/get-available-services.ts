@@ -9,7 +9,7 @@ export const getAvailableServices: AgentTool<Record<string, never>> = {
     type: "function",
     function: {
       name: "getAvailableServices",
-      description: `Lista los ${t.item.plural.toLowerCase()} activos con su ID, categoría, precio, duración y descripción. Úsala antes de hablar de precios o de reservar.`,
+      description: `Lista los ${t.item.plural.toLowerCase()} activos con su ID, categoría, estilistas obligatorios (onlyStaff), precio, duración y descripción. Úsala antes de hablar de precios o de reservar.`,
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   }),
@@ -18,7 +18,15 @@ export const getAvailableServices: AgentTool<Record<string, never>> = {
     const services = await prisma.service.findMany({
       where: { tenantId: tenant.id, active: true },
       orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
-      select: { id: true, title: true, description: true, price: true, durationMinutes: true, category: { select: { name: true } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        price: true,
+        durationMinutes: true,
+        category: { select: { name: true } },
+        staffMembers: { where: { active: true }, select: { id: true, name: true } },
+      },
     });
     return {
       ok: true,
@@ -26,6 +34,8 @@ export const getAvailableServices: AgentTool<Record<string, never>> = {
         id: s.id,
         title: s.title,
         category: s.category?.name ?? null,
+        // Si no es null, el servicio solo se puede reservar con estos estilistas.
+        onlyStaff: s.staffMembers.length ? s.staffMembers : null,
         description: s.description,
         price: formatPrice(s.price, tenant.business),
         durationMinutes: s.durationMinutes,

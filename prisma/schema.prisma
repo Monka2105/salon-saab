@@ -137,6 +137,8 @@ model StaffMember {
   appointments Appointment[]
   availability Availability[]
   timeOff      TimeOff[]
+  /// Servicios que solo pueden hacer ciertos estilistas (ver Service.staffMembers)
+  services     Service[]      @relation("ServiceStaff")
 
   @@index([tenantId, active])
 }
@@ -205,6 +207,8 @@ model Service {
   tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments Appointment[]
+  /// Estilistas que pueden hacerlo. Vacío = cualquiera; si hay alguno, la reserva queda obligada a ellos.
+  staffMembers StaffMember[]    @relation("ServiceStaff")
 
   @@index([tenantId, active])
   @@index([categoryId])
