@@ -9,6 +9,23 @@ try {
 
 const AUTH_DIR = ".wa-auth";
 const SEND_PORT = Number(process.env.WHATSAPP_WEB_PORT || 3010);
+/**
+ * Con WHATSAPP_BRIDGE_URL (p. ej. https://tu-sitio.netlify.app/api/whatsapp-web) cada mensaje lo
+ * procesa la app publicada, con su base de datos; sin ella se usa la base local (DATABASE_URL).
+ */
+const BRIDGE_URL = process.env.WHATSAPP_BRIDGE_URL?.trim() || null;
+
+async function forwardToBridge(message: object): Promise<string[]> {
+  const res = await fetch(BRIDGE_URL!, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WHATSAPP_BRIDGE_SECRET ?? ""}` },
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  const { replies } = (await res.json()) as { replies: string[] };
+  return replies;
+}
 
 async function main() {
   const {
@@ -84,17 +101,29 @@ async function main() {
         const phoneJid = [jid, m.key.remoteJidAlt].find((j) => j?.endsWith("@s.whatsapp.net")) ?? jid;
         const { type: msgType, text } = extractText(m);
 
+        const inbound = {
+          // El número propio sirve como phone_number_id: así se puede enrutar por tenant en /admin/settings.
+          phoneNumberId: jidNormalizedUser(sock.user?.id).split("@")[0],
+          from: phoneJid.split("@")[0],
+          waMessageId: m.key.id,
+          profileName: m.pushName ?? undefined,
+          type: msgType,
+          text,
+          timestamp: new Date(Number(m.messageTimestamp ?? Date.now() / 1000) * 1000),
+        };
+
+        if (BRIDGE_URL) {
+          sock.readMessages([m.key]).catch(() => undefined);
+          forwardToBridge(inbound)
+            .then(async (replies) => {
+              for (const reply of replies) await sock.sendMessage(jid, { text: reply });
+            })
+            .catch((err) => console.error("[whatsapp-web] puente falló", err));
+          continue;
+        }
+
         handleInboundMessage(
-          {
-            // El número propio sirve como phone_number_id: así se puede enrutar por tenant en /admin/settings.
-            phoneNumberId: jidNormalizedUser(sock.user?.id).split("@")[0],
-            from: phoneJid.split("@")[0],
-            waMessageId: m.key.id,
-            profileName: m.pushName ?? undefined,
-            type: msgType,
-            text,
-            timestamp: new Date(Number(m.messageTimestamp ?? Date.now() / 1000) * 1000),
-          },
+          inbound,
           {
             // WhatsApp Web (Baileys) no envía listas ni botones de forma fiable: se mandan como texto con las opciones.
             send: async (reply) => {
@@ -107,7 +136,9 @@ async function main() {
     });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (BRIDGE_URL) {
+    console.log(`[whatsapp-web] Mensajes procesados por ${BRIDGE_URL} (datos de la app publicada).`);
+  } else if (!process.env.OPENAI_API_KEY) {
     console.warn(
       "[whatsapp-web] ⚠ OPENAI_API_KEY está vacía en .env: la IA no puede responder y todo mensaje recibirá el texto de disculpa (fallbackMessage).",
     );
